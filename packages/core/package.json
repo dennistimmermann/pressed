@@ -1,0 +1,23 @@
+{
+  "name": "@sprint/core",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "//": "No build step: consumers (Vite, vitest, vue-tsc) read the TypeScript sources directly.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./runtime/main.ts": "./runtime/main.ts",
+    "./library/*.vue": "./src/library/*.vue",
+    "./*": "./src/*"
+  },
+  "dependencies": {
+    "@vue/compiler-sfc": "^3.5.41",
+    "@vue/server-renderer": "^3.5.41",
+    "qrcode": "^1.5.4",
+    "sucrase": "^3.35.1",
+    "vue": "^3.5.41"
+  },
+  "devDependencies": {
+    "@types/qrcode": "^1.5.6"
+  }
+}

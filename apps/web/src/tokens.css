@@ -1,0 +1,89 @@
+/* copy of docs/design/spec/tokens.css — keep identical */
+/* sprint — design tokens (Vue + shadcn-vue).
+   Drop into the Tailwind v4 entry (src/style.css), after @import "tailwindcss".
+   Fonts: npm i @fontsource/ibm-plex-sans @fontsource/ibm-plex-mono
+          import "@fontsource/ibm-plex-sans/400.css" (450 500 600) + the mono equivalents.
+   NOTE: these tokens are for the APP CHROME only. The rendered label document is always
+   black on white — never let a token reach the label CSS. */
+
+@theme {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  --background: oklch(0.968 0.004 90);
+  --foreground: oklch(0.22 0.012 60);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.012 60);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.012 60);
+  --muted: oklch(0.965 0.004 90);
+  --muted-foreground: oklch(0.52 0.01 60);
+  --border: oklch(0.90 0.006 90);
+  --input: oklch(0.88 0.006 90);
+  --ring: oklch(0.58 0.15 40);
+  --primary: oklch(0.58 0.15 40);
+  --primary-foreground: oklch(0.99 0.005 40);
+  --secondary: oklch(0.965 0.004 90);
+  --secondary-foreground: oklch(0.30 0.01 60);
+  --accent: oklch(0.955 0.028 40);
+  --accent-foreground: oklch(0.30 0.09 40);
+  --accent-border: oklch(0.88 0.05 40);
+  --destructive: oklch(0.58 0.17 25);
+  --destructive-foreground: oklch(0.99 0.005 25);
+  --warning: oklch(0.62 0.12 80);
+  --warning-bg: oklch(0.98 0.02 85);
+  --warning-border: oklch(0.89 0.03 85);
+  --warning-foreground: oklch(0.40 0.06 75);
+  --info: oklch(0.45 0.10 215);
+  --info-bg: oklch(0.955 0.012 200);
+  --ok: oklch(0.62 0.15 150);
+  --radius: 0.4rem;
+  --grid-dot: oklch(0.88 0.006 90);
+}
+
+.dark {
+  --background: oklch(0.19 0.008 60);
+  --foreground: oklch(0.93 0.004 90);
+  --card: oklch(0.225 0.009 60);
+  --card-foreground: oklch(0.93 0.004 90);
+  --popover: oklch(0.245 0.010 60);
+  --popover-foreground: oklch(0.93 0.004 90);
+  --muted: oklch(0.26 0.010 60);
+  --muted-foreground: oklch(0.65 0.010 60);
+  --border: oklch(0.30 0.010 60);
+  --input: oklch(0.32 0.010 60);
+  --ring: oklch(0.68 0.16 40);
+  --primary: oklch(0.68 0.16 40);
+  --primary-foreground: oklch(0.15 0.02 40);
+  --secondary: oklch(0.26 0.010 60);
+  --secondary-foreground: oklch(0.90 0.004 90);
+  --accent: oklch(0.32 0.05 40);
+  --accent-foreground: oklch(0.92 0.02 40);
+  --accent-border: oklch(0.42 0.07 40);
+  --warning-bg: oklch(0.28 0.03 85);
+  --warning-border: oklch(0.38 0.05 85);
+  --warning-foreground: oklch(0.86 0.06 85);
+  --info-bg: oklch(0.28 0.02 220);
+  --info: oklch(0.72 0.08 220);
+  --grid-dot: oklch(0.28 0.010 60);
+}
+
+/* The two things the design needs that utilities don't give you. */
+@layer components {
+  /* preview canvas */
+  .dot-grid {
+    background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
+    background-size: 16px 16px;
+  }
+  /* section eyebrow: 10px sans 600 uppercase */
+  .eyebrow {
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+}

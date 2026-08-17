@@ -1,0 +1,25 @@
+{
+  "name": "@sprint/editor",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "//": "Label-agnostic Vue SFC editor. No build step: consumed as source.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "dev": "vite --config dev/vite.config.ts"
+  },
+  "dependencies": {
+    "@sprint/core": "*",
+    "@volar/monaco": "2.4.28",
+    "@vue/language-core": "3.3.10",
+    "@vue/language-service": "3.3.10",
+    "monaco-editor-core": "~0.52.2",
+    "typescript": "~6.0.2",
+    "volar-service-typescript": "0.0.71",
+    "vscode-uri": "^3.1.0",
+    "vue": "^3.5.41"
+  }
+}

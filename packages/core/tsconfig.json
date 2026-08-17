@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
+    "types": ["vite/client"],
+    // The library .vue files import from 'sprint' — the module the runtime frame injects.
+    "paths": { "sprint": ["./src/template/sprint-module.ts"] }
+  },
+  "include": ["src", "runtime"]
+}
