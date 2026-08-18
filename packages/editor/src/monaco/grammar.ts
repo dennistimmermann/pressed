@@ -1,4 +1,4 @@
-import type { languages } from 'monaco-editor-core'
+import { languages } from 'monaco-editor-core'
 
 /**
  * A small Monarch tokenizer for `.vue` — the base layer under Volar's semantic tokens.
@@ -106,4 +106,19 @@ export const vueLanguageConfig: languages.LanguageConfiguration = {
     increaseIndentPattern: /<(?!\?|(?:area|base|br|col|hr|img|input|link|meta|source)\b|[^>]*\/>)([-\w.]+)(?=\s|>)\b[^>]*>(?!.*<\/\1>)|\{[^}"']*$/,
     decreaseIndentPattern: /^\s*(<\/[-\w.]+\b[^>]*>|-->|\})/,
   },
+  // Enter between `<div>` and `</div>` (or `{` and `}`) opens an indented line and pushes the
+  // closer down — the HTML/brace behaviour people expect from any editor.
+  onEnterRules: [
+    {
+      beforeText: /<(?!(?:area|base|br|col|hr|img|input|link|meta|source)\b)([-\w.:]+)[^/>]*>\s*$/i,
+      afterText: /^\s*<\/([-\w.:]+)\s*>/i,
+      action: { indentAction: languages.IndentAction.IndentOutdent },
+    },
+    {
+      beforeText: /<(?!(?:area|base|br|col|hr|img|input|link|meta|source)\b)([-\w.:]+)[^/>]*>\s*$/i,
+      action: { indentAction: languages.IndentAction.Indent },
+    },
+    { beforeText: /\{\s*$/, afterText: /^\s*\}/, action: { indentAction: languages.IndentAction.IndentOutdent } },
+    { beforeText: /\{\s*$/, action: { indentAction: languages.IndentAction.Indent } },
+  ],
 }

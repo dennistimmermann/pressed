@@ -11,6 +11,12 @@ export interface EditorHandle {
   getOffset(): number
   /** Move the caret, optionally selecting up to `endOffset`. */
   setCaret(offset: number, endOffset?: number): void
+  /** The current selection as offsets; `start === end` when there is only a caret. */
+  getSelection(): { start: number; end: number }
+  /** Scroll `offset` into view (centred when it is off screen) without moving the caret. */
+  revealOffset(offset: number): void
+  /** Format a range (offsets) with the language service; whole document when omitted. */
+  format(range?: { start: number; end: number }): Promise<void>
   /** Apply text-range edits as one undoable operation. Ranges are offsets into the current value. */
   executeEdits(edits: { start: number; end: number; text: string }[]): void
   /** Subscribe to caret moves; returns an unsubscribe function. */

@@ -16,6 +16,7 @@
     "@volar/monaco": "2.4.28",
     "@vue/language-core": "3.3.10",
     "@vue/language-service": "3.3.10",
+    "@vue/typescript-plugin": "^3.3.10",
     "monaco-editor-core": "~0.52.2",
     "typescript": "~6.0.2",
     "volar-service-typescript": "0.0.71",

@@ -14,13 +14,10 @@ export type Settings = {
   printerId: string
   /** Splitter layouts in percent, keyed by group id (design §3): `cols`, `left`, `centre`, `right`. */
   paneSizes: Record<string, number[]>
-  /** Collapsed left-column panes (design §3.8), keyed by pane id. */
-  collapsed: Record<string, boolean>
   previewMode: 'rendered' | 'raster'
   /** Dashed outlines around every component in the preview (design §3.5). */
   outlines: boolean
-  /** Folded `<meta>`/`<snippet>` region names, per template id. */
-  folded: Record<string, string[]>
+  /** The template to reopen on the next visit. The active *tab* is session state, not this. */
   lastTemplateId: string | null
   spoolmanUrl: string
 }
@@ -29,10 +26,8 @@ export const settings = persisted<Settings>('sprint.settings', {
   theme: matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
   printerId: 'browser',
   paneSizes: {},
-  collapsed: {},
   previewMode: 'rendered',
   outlines: false,
-  folded: {},
   lastTemplateId: null,
   spoolmanUrl: 'http://localhost:7912',
 })

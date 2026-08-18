@@ -17,6 +17,11 @@ const props = defineProps<{
   handle: EditorHandle | null
   /** Current editor text; the caret's context decides `{{ row.x }}` vs `row.x`. */
   source: string
+  /**
+   * Inside a snippet scope the pane lists the snippet's props with the current row's values
+   * instead of `row` (README-tabs §5) — the paths are bare names, `{{ text }}`, not `row.text`.
+   */
+  propsOf?: { name: string; props: { name: string; value: unknown }[] } | null
 }>()
 
 const emit = defineEmits<{ 'go-to-data': [] }>()
@@ -26,7 +31,18 @@ const collapsed = ref(new Set<string>())
 const listId = useId()
 const inputId = useId()
 
-const tree = computed(() => buildTree(props.rowType, props.row))
+const tree = computed<VarNode[]>(() =>
+  props.propsOf
+    ? props.propsOf.props.map((p) => ({
+        name: p.name,
+        path: p.name,
+        depth: 0,
+        kind: 'leaf',
+        value: p.value === undefined || p.value === null ? '—' : typeof p.value === 'object' ? '{ … }' : String(p.value),
+        children: [],
+      }))
+    : buildTree(props.rowType, props.row),
+)
 const rows = computed(() => flatten(tree.value, collapsed.value, filter.value))
 
 const { active, onKeydown, optionId } = useListNav(
@@ -56,11 +72,11 @@ function toggle(node: VarNode) {
 <template>
   <div class="flex h-full min-h-0 flex-col bg-card text-card-foreground">
     <header class="flex h-[34px] flex-none items-center border-b border-border px-3">
-      <span class="eyebrow">Variables</span>
-      <span class="ml-auto font-mono text-[10px] text-muted-foreground">{{ rowLabel }}</span>
+      <span class="eyebrow">{{ propsOf ? `props of ${propsOf.name}` : 'Variables' }}</span>
+      <span v-if="!propsOf" class="ml-auto font-mono text-[10px] text-muted-foreground">{{ rowLabel }}</span>
     </header>
 
-    <template v-if="rows.length || filter">
+    <template v-if="rows.length || filter || propsOf">
       <div class="flex-none px-2 py-2">
         <label :for="inputId" class="sr-only">Filter variables</label>
         <input

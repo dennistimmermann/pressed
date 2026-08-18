@@ -7,13 +7,16 @@ export * from './types'
 export { createRuntimeClient, debounce, RenderSuperseded } from './runtime-client'
 export type { RuntimeClient } from './runtime-client'
 
-// The editor's `<meta>`/`<snippet>` fold regions — the ids a host persists (design §3.3).
-export { foldRegions } from './monaco/folding'
-export type { FoldRegion } from './monaco/folding'
+// One tab per block (design README-tabs): the model the strip and the editor both read.
+export { tabsModel, tabAt, tabKey, blockOf, insertBlock } from './tabs'
+export type { TabsModel, TabRef, TabBlock, SnippetScope, BlockKind } from './tabs'
 
 // Panes — WP1/WP2 fill these in; the stubs keep host imports resolvable.
 export { default as SfcEditor } from './SfcEditor.vue'
 export { default as FileStrip } from './FileStrip.vue'
+export { default as BlockTabs } from './BlockTabs.vue'
+export { default as LabelSetup } from './LabelSetup.vue'
+export { default as StylePane } from './StylePane.vue'
 export { default as StatusPane } from './StatusPane.vue'
 export { default as PreviewPane } from './PreviewPane.vue'
 export { default as ComponentsPane } from './ComponentsPane.vue'
@@ -24,3 +27,5 @@ export { default as ManageTemplates } from './ManageTemplates.vue'
 // Source analysis at the caret (WP2): the host needs it to feed PropertyEditor.
 export { elementAt, cursorContext, attributeEdit, insertAt, insertVar } from './ast'
 export type { ElementInfo, PropInfo, CursorContext, Edit, Loc } from './ast'
+export { ruleAt, parseRule, setDeclaration, parseLength, rulesIn, findRule } from './css'
+export type { Rule, Declaration } from './css'

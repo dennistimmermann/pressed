@@ -1,57 +1,66 @@
 <!--
-  The five panes of design §3. This file is layout only: every pane's props live in one
-  computed each (below), so the wide, narrow and stacked arrangements share one wiring.
+  Layout only: [ header / editor + bottom pane ] | [ preview / status ]. Components, variables
+  and attributes live in the tabbed pane under the editor (EditorCentre); no left column.
 -->
 <script setup lang="ts">
-import { computed, ref, useTemplateRef, watch } from 'vue'
-import { useElementSize, useMediaQuery } from '@vueuse/core'
-import { Boxes, Braces } from '@lucide/vue'
+import { computed, ref, watch } from 'vue'
+import { useEventListener, useMediaQuery } from '@vueuse/core'
 import { LIBRARY_NAMES } from '@sprint/core'
-import { librarySources } from '@sprint/core/library/index.ts'
 import { parseMeta } from '@sprint/core/template/meta.ts'
-import {
-  ComponentsPane, FileStrip, ManageTemplates, PreviewPane, PropertyEditor, SfcEditor,
-  StatusPane, VariablesPane,
-} from '@sprint/editor'
-import { boxAt, elementAt } from '@sprint/editor/ast.ts'
-import type { EditorHandle } from '@sprint/editor/editor-handle.ts'
+import { ManageTemplates, PreviewPane, StatusPane } from '@sprint/editor'
+import { buildTree, type VarNode } from '@sprint/editor/inspector/row-tree.ts'
+import EditorCentre from '@/components/EditorCentre.vue'
+import EditorHeader from '@/components/EditorHeader.vue'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { K30F } from '@/printers'
 import { rasterDataUrl } from '@/raster'
 import { data, previewRow } from '@/stores/data'
 import {
-  dirty, editor, errorCount, filename, handle, jumpTo, load, meta, previewDocument, previewState,
-  save, saveAs, warningCount,
+  cycleTab, dirty, editor, element, enterScope, filename, formatBlock, goToOffset, jumpTo, leaveScope,
+  load, meta, previewDocument, previewState, save, saveAs, switchTab, tabs,
 } from '@/stores/editor'
 import { settings } from '@/stores/settings'
 import {
-  bundled, deleteTemplate, download, duplicateTemplate, exportTemplate, importTemplates,
-  isBundled, newTemplate, renameTemplate, templateName, templates,
+  bundled, deleteTemplate, duplicateTemplate, exportTemplate, importTemplates, isBundled,
+  newTemplate, renameTemplate, templateName, templates,
 } from '@/stores/templates'
-import { view } from '@/stores/view'
 
-// Design §3.8. Below 1100 the left column is an icon rail; below 900 everything stacks.
-const narrow = useMediaQuery('(max-width: 1100px)')
+// Design §3.8: below 900 everything stacks.
 const stacked = useMediaQuery('(max-width: 900px)')
-const rail = ref<'components' | 'variables' | null>(null)
 
 // Splitter layouts are percentages; the store keeps one array per group (design §3).
 const sizes = (key: string, fallback: number[]) => settings.paneSizes[key] ?? fallback
 const persist = (key: string) => (layout: number[]) => { settings.paneSizes[key] = layout }
+const outer = computed(() => sizes('outer', [70.5, 29.5])) // [work area | preview+status]
 
-// A pane collapses to its own 34px header — as a percentage of the column it lives in.
-const leftColumn = useTemplateRef<HTMLElement>('leftColumn')
-const { height: leftHeight } = useElementSize(leftColumn)
-const collapsedPct = computed(() => (leftHeight.value ? (34 / leftHeight.value) * 100 : 4))
+// ---------------------------------------------------------------- keyboard (README-tabs §3)
+// Physical keys (`e.code`), because ⌥ rewrites `e.key` on macOS. Capture phase: Monaco eats
+// ⌥⇧← for its own selection command before a bubbling listener would ever see it.
 
-// ---------------------------------------------------------------- caret → element
-
-const element = computed(() => elementAt(editor.source, editor.caret))
-const norm = (name: string) => name.replace(/-/g, '').toLowerCase()
-const schema = computed(() =>
-  editor.components.find((c) => element.value && norm(c.name) === norm(element.value.tag)) ?? null,
-)
-const line = computed(() => editor.source.slice(0, element.value?.loc.start ?? editor.caret).split('\n').length)
+useEventListener('keydown', (e: KeyboardEvent) => {
+  if (!e.altKey) return
+  const act = (run: () => void) => { e.preventDefault(); run() }
+  if (e.metaKey || e.ctrlKey) {
+    if (e.code === 'BracketRight') act(() => cycleTab(1))
+    else if (e.code === 'BracketLeft') act(() => cycleTab(-1))
+    return
+  }
+  if (e.shiftKey && e.code === 'ArrowLeft') return act(leaveScope)
+  if (e.shiftKey && e.code === 'KeyF') return act(() => { void formatBlock() })
+  const digit = /^Digit([1-9])$/.exec(e.code)
+  if (!digit) return
+  const n = Number(digit[1])
+  if (n <= 3) {
+    // The blocks of whatever scope we are in, in strip order.
+    const scope = editor.activeTab.scope
+    const blocks = scope === null ? tabs.value.blocks : tabs.value.snippets.find((s) => s.name === scope)?.blocks ?? []
+    const block = blocks[n - 1]
+    if (block) act(() => switchTab({ scope, kind: block.kind }))
+  } else {
+    const snippet = tabs.value.snippets[n - 4]
+    if (snippet) act(() => enterScope(snippet.name))
+  }
+}, { capture: true })
 
 // ---------------------------------------------------------------- preview
 
@@ -86,58 +95,30 @@ watch(
 // ---------------------------------------------------------------- pane props
 // One computed per pane: the single place that has to change if a pane's props do.
 
-const fileStripProps = computed(() => ({
-  filename: filename.value,
-  dirty: dirty.value,
-  snippetCount: (editor.source.match(/<snippet[\s>]/g) ?? []).length,
-  hasMeta: /<meta[\s>]/.test(editor.source),
-  errorCount: errorCount.value,
-  warningCount: warningCount.value,
-  savedAt: editor.savedAt ?? undefined,
-  onSave: () => save(),
-  onSaveAs: () => { saveAsName.value = `${nameOf(editor.templateId)} copy` },
-  onManage: () => { editor.manageOpen = true },
-}))
-
-const editorProps = computed(() => ({
-  modelValue: editor.source,
-  'onUpdate:modelValue': (value: string) => { editor.source = value },
-  contextType: data.rowType,
-  libraryComponents: librarySources,
-  filename: filename.value,
-  foldedRegions: settings.folded[editor.templateId ?? ''],
-  highlight: boxAt(editor.source, editor.caret),
-  'onUpdate:foldedRegions': (ids: string[]) => { settings.folded[editor.templateId ?? ''] = ids },
-  onCaret: (offset: number) => { editor.caret = offset },
-  onReady: (h: EditorHandle) => { handle.value = h },
-}))
-
+/** What the editor's `+ component` popup offers. */
 const componentsProps = computed(() => ({
   library: editor.components.filter((c) => LIBRARY_NAMES.includes(c.name)),
   snippets: editor.components.filter((c) => !LIBRARY_NAMES.includes(c.name)),
-  handle: handle.value,
-  selectedName: element.value?.tag,
-  onExtractSnippet: extractSnippet,
-  onPromote: promote,
 }))
 
-const variablesProps = computed(() => ({
-  rowType: data.rowType,
-  row: previewRow.value,
-  rowLabel: data.rows.length
-    ? `${data.sourceId === 'spoolman' ? 'Spool' : 'Row'} · row ${data.previewRowIndex + 1}`
-    : 'no data',
-  handle: handle.value,
-  source: editor.source,
-  onGoToData: () => { view.value = 'data' },
-}))
+/** Flat `row.*` leaves — or, inside a snippet, its props (declared types as hints) — for the `+ variable` popup. */
+const insertVariables = computed(() => {
+  if (propsOf.value) return propsOf.value.props.map((p) => ({ path: p.name, hint: p.value }))
+  const out: { path: string; hint: string }[] = []
+  const walk = (nodes: VarNode[]) => { for (const n of nodes) n.kind === 'leaf' ? out.push({ path: n.path, hint: n.value }) : walk(n.children) }
+  walk(buildTree(data.rowType, previewRow.value))
+  return out
+})
 
-const propertyProps = computed(() => ({
-  element: element.value,
-  schema: schema.value,
-  handle: handle.value,
-  line: line.value,
-}))
+const propsOf = computed(() => {
+  const scope = editor.activeTab.scope
+  if (scope === null) return undefined
+  const schema = editor.components.find((c) => c.name === scope)
+  return {
+    name: scope,
+    props: (schema?.props ?? []).map((p) => ({ name: p.name, value: `${p.type}${p.required ? '' : '?'}` })),
+  }
+})
 
 const previewProps = computed(() => ({
   document: previewDocument.value,
@@ -149,42 +130,15 @@ const previewProps = computed(() => ({
   outlines: settings.outlines,
   mode: settings.previewMode,
   'onUpdate:mode': (mode: 'rendered' | 'raster') => { settings.previewMode = mode },
-  onSelectNode: ({ start, end }: { start: number; end: number }) => {
-    handle.value?.setCaret(start, end)
-    editor.caret = start
-  },
+  // Clicking an element enters the tab that owns it — the snippet's, if that is where it lives.
+  onSelectNode: ({ start, end }: { start: number; end: number }) => goToOffset(start, end),
 }))
 
 const statusProps = computed(() => ({
   messages: editor.messages,
-  okSummary: `compiled · ${fileStripProps.value.snippetCount} snippets · ${editor.components.length} components`,
+  okSummary: `compiled · ${tabs.value.snippets.length} snippets · ${editor.components.length} components`,
   onJump: jumpTo,
 }))
-
-// ---------------------------------------------------------------- snippets
-
-/** Extract selection → snippet: the block goes above the main `<template>`, the tag replaces it. */
-function extractSnippet({ text, start, end }: { text: string; start: number; end: number }) {
-  if (!handle.value) return
-  const taken = new Set(editor.components.map((c) => c.name))
-  let name = 'part'
-  for (let i = 2; taken.has(name); i++) name = `part${i}`
-  const at = editor.source.search(/^<template[\s>]/m)
-  handle.value.executeEdits([
-    { start: end, end, text: '' },
-    { start, end, text: `<${name} />` },
-    { start: at < 0 ? 0 : at, end: at < 0 ? 0 : at, text: `<snippet name="${name}">\n${text}\n</snippet>\n\n` },
-  ])
-}
-
-/**
- * Promote a snippet to a library file: in a browser that means handing the user the `.vue`.
- * ponytail: shorthand snippets are not valid SFCs on their own — wrap them first if that bites.
- */
-function promote(name: string) {
-  const body = new RegExp(`<snippet[^>]*name=["']${name}["'][^>]*>([\\s\\S]*?)</snippet\\s*>`).exec(editor.source)
-  if (body) download(`${name}.vue`, body[1].trim())
-}
 
 // ---------------------------------------------------------------- picker / manage
 
@@ -193,7 +147,7 @@ const nameOf = (id: string | null) => {
   const record = all.value.find((t) => t.id === id)
   return record ? templateName(record) : 'Untitled'
 }
-const sizeText = (source: string) => {
+const mediaText = (source: string) => {
   const { width, height } = parseMeta(source).meta.size
   return `${width} × ${height}`
 }
@@ -204,8 +158,8 @@ const manageItems = computed(() =>
   all.value.map((t) => ({
     id: t.id,
     name: templateName(t),
-    meta: `${sizeText(t.source)} mm · ${isBundled(t.id) ? 'built-in' : 'mine'}`,
-    media: sizeText(t.source),
+    meta: `${mediaText(t.source)} mm · ${isBundled(t.id) ? 'built-in' : 'mine'}`,
+    media: mediaText(t.source),
     kind: (isBundled(t.id) ? 'built-in' : 'mine') as 'built-in' | 'mine',
     assetsSummary: Object.keys(t.assets).length ? `${Object.keys(t.assets).length} assets` : undefined,
     thumbnail: thumbnails.value[t.id],
@@ -261,78 +215,26 @@ async function onCreate() {
 
 <template>
   <section class="relative flex h-full min-h-0">
-    <!-- ≤1100px: components and variables move into an icon rail with popovers (design §3.8). -->
-    <div v-if="narrow" class="flex w-[44px] flex-none flex-col items-center gap-1 border-r border-border py-2">
-      <button
-        v-for="pane in (['components', 'variables'] as const)" :key="pane" type="button"
-        class="grid size-8 place-items-center rounded-[6px] transition-colors duration-120 ease-out"
-        :class="rail === pane ? 'bg-accent text-accent-foreground ring-1 ring-inset ring-accent-border' : 'text-muted-foreground hover:bg-muted'"
-        :aria-label="pane" :aria-expanded="rail === pane"
-        @click="rail = rail === pane ? null : pane"
-      >
-        <Boxes v-if="pane === 'components'" class="size-4" />
-        <Braces v-else class="size-4" />
-      </button>
-    </div>
-
-    <div
-      v-if="rail"
-      class="absolute top-2 bottom-2 left-[52px] z-20 flex w-[252px] flex-col overflow-hidden rounded-[10px] border border-border bg-popover shadow-[0_18px_40px_-14px_rgb(0_0_0/.30)]"
-    >
-      <ComponentsPane v-if="rail === 'components'" v-bind="componentsProps" class="h-full" />
-      <VariablesPane v-else v-bind="variablesProps" class="h-full" />
-    </div>
-
-    <!-- ≤900px: editor → preview → status, stacked; no splitters, fixed heights (design §3.8). -->
+    <!-- ≤900px: editor → preview → status, stacked; no column splitters (design §3.8). -->
     <div v-if="stacked" class="flex min-w-0 flex-1 flex-col">
-      <FileStrip v-bind="fileStripProps" class="flex-none" />
-      <div class="min-h-0 flex-1"><SfcEditor v-bind="editorProps" class="h-full" /></div>
-      <div class="h-[150px] flex-none border-t border-border"><PropertyEditor v-bind="propertyProps" /></div>
+      <EditorHeader narrow @save-as="saveAsName = `${nameOf(editor.templateId)} copy`" />
+      <EditorCentre class="min-h-0 flex-1" :insert-components="componentsProps" :insert-variables="insertVariables" />
       <div class="h-[240px] flex-none border-t border-border"><PreviewPane v-bind="previewProps" class="h-full" /></div>
       <div class="flex-none border-t border-border"><StatusPane v-bind="statusProps" /></div>
     </div>
 
-    <ResizablePanelGroup v-else direction="horizontal" class="min-w-0 flex-1" @layout="persist('cols')">
-      <ResizablePanel v-if="!narrow" :default-size="sizes('cols', [17.5, 53, 29.5])[0]" :min-size="12" :order="1">
-        <div ref="leftColumn" class="h-full">
-          <ResizablePanelGroup direction="vertical" @layout="persist('left')">
-            <ResizablePanel
-              :default-size="sizes('left', [55, 45])[0]" :min-size="15"
-              collapsible :collapsed-size="collapsedPct"
-            >
-              <ComponentsPane v-bind="componentsProps" class="h-full overflow-hidden" />
-            </ResizablePanel>
-            <ResizableHandle />
-            <ResizablePanel
-              :default-size="sizes('left', [55, 45])[1]" :min-size="15"
-              collapsible :collapsed-size="collapsedPct"
-            >
-              <VariablesPane v-bind="variablesProps" class="h-full overflow-hidden" />
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        </div>
-      </ResizablePanel>
-      <ResizableHandle v-if="!narrow" />
-
-      <ResizablePanel :default-size="sizes('cols', [17.5, 53, 29.5])[1]" :min-size="30" :order="2">
-        <div class="flex h-full min-h-0 flex-col border-x border-border">
-          <FileStrip v-bind="fileStripProps" class="flex-none" />
-          <ResizablePanelGroup direction="vertical" class="min-h-0 flex-1" @layout="persist('centre')">
-            <ResizablePanel :default-size="sizes('centre', [80, 20])[0]" :min-size="30">
-              <SfcEditor v-bind="editorProps" class="h-full" />
-            </ResizablePanel>
-            <!-- The one handle the design draws: a 34 × 3px bar, cursor row-resize. -->
-            <ResizableHandle with-handle class="cursor-row-resize [&>div]:h-[34px] [&>div]:w-[3px]" />
-            <ResizablePanel :default-size="sizes('centre', [80, 20])[1]" :min-size="10">
-              <PropertyEditor v-bind="propertyProps" />
-            </ResizablePanel>
-          </ResizablePanelGroup>
+    <!-- Wide: file strip + tabs over the editor and its bottom pane; preview and status full height. -->
+    <ResizablePanelGroup v-else direction="horizontal" class="min-w-0 flex-1" @layout="persist('outer')">
+      <ResizablePanel :default-size="outer[0]" :min-size="40" :order="1">
+        <div class="flex h-full min-h-0 flex-col">
+          <EditorHeader @save-as="saveAsName = `${nameOf(editor.templateId)} copy`" />
+          <EditorCentre class="min-h-0 flex-1" :insert-components="componentsProps" :insert-variables="insertVariables" />
         </div>
       </ResizablePanel>
       <ResizableHandle />
 
-      <ResizablePanel :default-size="sizes('cols', [17.5, 53, 29.5])[2]" :min-size="18" :order="3">
-        <ResizablePanelGroup direction="vertical" @layout="persist('right')">
+      <ResizablePanel :default-size="outer[1]" :min-size="18" :order="2">
+        <ResizablePanelGroup direction="vertical" class="border-l border-border" @layout="persist('right')">
           <ResizablePanel :default-size="sizes('right', [68, 32])[0]" :min-size="30">
             <PreviewPane v-bind="previewProps" class="h-full" />
           </ResizablePanel>

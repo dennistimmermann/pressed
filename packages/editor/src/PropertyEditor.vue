@@ -20,6 +20,13 @@ const props = defineProps<{
   /** 1-based caret line, for the header. */
   line: number
 }>()
+const emit = defineEmits<{ /** A class chip was clicked: open (or create) its rule. */ style: [cls: string] }>()
+
+/** Static classes of the element — the bridge from markup to its rules. */
+const classes = computed(() => {
+  const attr = props.element?.props.find((p) => p.name === 'class' && !p.isBinding)
+  return attr?.value?.split(/\s+/).filter(Boolean) ?? []
+})
 
 type Control = 'expression' | 'number' | 'enum' | 'boolean' | 'color' | 'text'
 type Field = {
@@ -163,6 +170,13 @@ const INPUT =
         <span class="font-mono text-[12px] font-semibold">{{ element.tag }}</span>
         <span class="flex-none font-mono text-[10.5px] text-muted-foreground">line {{ line }} · cursor</span>
         <span v-if="schema?.doc" class="min-w-0 truncate text-[11px] text-muted-foreground">{{ schema.doc }}</span>
+        <span v-if="classes.length" class="flex flex-none items-center gap-1 pl-2">
+          <button
+            v-for="cls in classes" :key="cls" type="button" :title="`open .${cls} on the Style tab`"
+            class="rounded-[4px] bg-[var(--info-bg)] px-1.5 font-mono text-[10.5px] text-[var(--info)] transition-colors duration-120 ease-out hover:bg-accent hover:text-accent-foreground"
+            @click="emit('style', cls)"
+          >.{{ cls }}</button>
+        </span>
         <span class="ml-auto flex-none font-mono text-[10.5px] text-muted-foreground">{{ origin }}</span>
       </header>
 

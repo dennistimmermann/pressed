@@ -3,11 +3,15 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import { DEFAULT_META, labelDocument, SPOOL_ROW_TYPE, type Message, type Meta } from '@sprint/core'
 import { librarySources } from '@sprint/core/library/index.ts'
 import source0 from '../../../apps/web/src/templates/Spool label.vue?raw'
+import AlignmentPlaceholder from '../src/AlignmentPlaceholder.vue'
+import BlockTabs from '../src/BlockTabs.vue'
 import FileStrip from '../src/FileStrip.vue'
+import LabelSetup from '../src/LabelSetup.vue'
 import PreviewPane from '../src/PreviewPane.vue'
 import SfcEditor from '../src/SfcEditor.vue'
 import StatusPane from '../src/StatusPane.vue'
 import type { EditorHandle } from '../src/editor-handle'
+import { blockOf, insertBlock, tabsModel, type TabRef } from '../src/tabs'
 import { createRuntimeClient, debounce, RenderSuperseded, type RuntimeClient } from '../src/runtime-client'
 import { editor as monacoEditor } from 'monaco-editor-core'
 
@@ -76,6 +80,44 @@ const errorCount = computed(() => messages.value.filter((m) => m.kind !== 'purit
 const warningCount = computed(() => messages.value.filter((m) => m.kind === 'purity').length)
 const previewState = computed(() => (errorCount.value ? ('error' as const) : ('ok' as const)))
 
+// ---------------------------------------------------------------- tabs (README-tabs)
+
+const model = computed(() => tabsModel(source.value))
+const scope = ref<string | null>(null)
+const active = ref<TabRef>({ scope: null, kind: 'template' })
+const setupOpen = ref(false)
+const narrow = ref(false)
+
+const block = computed(() => blockOf(model.value, active.value))
+const visible = computed(() => block.value?.lines ?? null)
+
+/** Harness: two fake badges, so the strip's error/warning treatments are visible. */
+const badges = { style: { level: 'warning' as const, count: 1 }, 'temp/script': { level: 'error' as const, count: 2 } }
+
+const EMPTY: Record<string, { title: string; body: string }> = {
+  template: { title: 'Nothing here yet', body: 'The markup of this label. Components from the left pane insert here, and `{{ row.x }}` reads the current row.' },
+  style: { title: 'Nothing here yet', body: 'Rules you write here apply to this label only. Class names come from the template — `.title`, `.qr` — and `mm` is a real millimetre.' },
+  script: { title: 'Nothing here yet', body: 'TypeScript that runs once per row, before the markup. Compute here what the template should only read.' },
+}
+const emptyText = computed(() => (block.value?.empty ? EMPTY[block.value.kind] : null))
+
+function select(tab: TabRef) {
+  active.value = tab
+  handle.value?.setCaret(blockOf(model.value, tab)?.contentStart ?? 0)
+}
+
+function enterScope(name: string) {
+  scope.value = name
+  select({ scope: name, kind: 'template' })
+}
+
+function add(kind: 'script' | 'style' | 'snippet', name?: string) {
+  const edit = insertBlock(source.value, model.value, kind, name, kind === 'snippet' ? null : scope.value)
+  handle.value?.executeEdits([edit])
+  // The model is rebuilt from the new text on the next tick; the new tab opens focused.
+  setTimeout(() => (kind === 'snippet' ? enterScope(name ?? 'new') : select({ scope: scope.value, kind })))
+}
+
 /** `file:line:col` → caret offset. Only the main file maps directly; snippets live in it too. */
 function jump({ line, col }: { line?: number; col?: number }) {
   if (!line) return
@@ -92,6 +134,7 @@ function jump({ line, col }: { line?: number; col?: number }) {
       <span class="grow" />
       <span class="mono">{{ meta.size.width }} × {{ meta.size.height }} · gap {{ meta.gap ?? 0 }}</span>
       <span class="mono">caret {{ caret }}</span>
+      <button type="button" class="ghost" @click="narrow = !narrow">{{ narrow ? '≤900px' : 'wide' }}</button>
       <button type="button" class="ghost" @click="dark = !dark">◐ {{ dark ? 'dark' : 'light' }}</button>
     </header>
 
@@ -100,21 +143,36 @@ function jump({ line, col }: { line?: number; col?: number }) {
         <FileStrip
           :filename="`${meta.name}.vue`"
           :dirty="source !== source0"
-          :snippet-count="(source.match(/<snippet[\s>]/g) ?? []).length"
-          :has-meta="/<meta[\s>]/.test(source)"
+          :size-text="`${meta.size.width} × ${meta.size.height} · gap ${meta.gap ?? 0}`"
           :error-count="errorCount"
           :warning-count="warningCount"
           :saved-at="Date.now()"
-          @open-picker="() => {}"
+          @label-setup="setupOpen = !setupOpen"
+        />
+        <LabelSetup class="setup" :meta="meta" :open="setupOpen" :printers="[{ id: 'K30F', label: 'Phomemo K30F' }]" @close="setupOpen = false" />
+        <BlockTabs
+          :model="model"
+          :active="active"
+          :scope="scope"
+          :badges="badges"
+          :narrow="narrow"
+          @select="select"
+          @enter-scope="enterScope"
+          @leave-scope="((scope = null), select({ scope: null, kind: 'template' }))"
+          @add="add"
         />
         <SfcEditor
           v-model="source"
+          class="editor"
           :context-type="SPOOL_ROW_TYPE"
           :library-components="librarySources"
           :filename="`${meta.name}.vue`"
+          :visible="visible"
+          :empty-text="emptyText"
           @caret="(offset) => (caret = offset)"
           @ready="(h) => (handle = h)"
         />
+        <AlignmentPlaceholder v-if="active.kind === 'style'" href="https://example.invalid/feedback" />
       </section>
 
       <section class="right">
@@ -202,6 +260,14 @@ function jump({ line, col }: { line?: number; col?: number }) {
   flex-direction: column;
   min-width: 0;
   border-right: 1px solid var(--border);
+}
+.editor {
+  flex: 1;
+  min-height: 0;
+}
+.setup {
+  align-self: flex-start;
+  margin: 6px 10px 0;
 }
 .right {
   display: grid;

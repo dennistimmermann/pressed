@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { editor as monacoEditor, languages, Range, Uri } from 'monaco-editor-core'
-import { onBeforeUnmount, onMounted, shallowRef, useTemplateRef, watch } from 'vue'
+import { editor as monacoEditor, type IRange, Range, Uri } from 'monaco-editor-core'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useTemplateRef, watch } from 'vue'
 import type { EditorHandle } from './editor-handle'
+import { attributeEdit, cursorContext, elementAt } from './ast'
+import { insertItems, type InsertItem } from './inspector/insert'
+import type { ComponentSchema } from './types'
 import { getOrCreateModel, startLanguageService } from './monaco/env'
-import { foldRegions } from './monaco/folding'
 import { componentUri, ENV_URI, SPRINT_MODULE_URI, sprintEnv } from './monaco/sprint-env'
 import { defineSprintTheme } from './monaco/theme'
 
@@ -23,17 +25,28 @@ const props = withDefaults(
     /** Library component sources, `{ QrCode: '<script setup>…' }` — hover/props come from these. */
     libraryComponents: Record<string, string>
     filename?: string
-    /** Ids of folded `<meta>`/`<snippet>` regions, see `monaco/folding.ts`. */
-    foldedRegions?: string[]
     /** Source range of the element at the caret (drawn as a box); `holes` = its child elements, left un-bolded. */
     highlight?: { start: number; end: number; holes?: { start: number; end: number }[] } | null
+    /**
+     * 1-based inclusive model lines to show — the active tab's block (README-tabs §1).
+     * Everything outside is hidden, line numbers keep counting. `null` shows the whole file.
+     */
+    visible?: { first: number; last: number } | null
+    /** Centred "Nothing here yet" state over an empty block (README-tabs §7). Backticked words render mono. */
+    emptyText?: { title: string; body: string } | null
+    /**
+     * Insert popup (the `+` on a blank template line, or typing `<` there): library components and
+     * this file's snippets, on top of plain HTML filtered by the enclosing element. Off when null.
+     */
+    insertables?: { components: ComponentSchema[]; snippets: ComponentSchema[] } | null
+    /** Variables offered by the `+` in text / interpolations / bound attributes (`row.x` paths, or a snippet's props). */
+    variables?: { path: string; hint: string }[] | null
   }>(),
-  { filename: 'Label.vue', foldedRegions: () => [] },
+  { filename: 'Label.vue', visible: null, emptyText: null, insertables: null, variables: null },
 )
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
-  'update:foldedRegions': [ids: string[]]
   caret: [offset: number]
   ready: [handle: EditorHandle]
 }>()
@@ -57,6 +70,45 @@ function syncEnvModels() {
   }
 }
 
+// ---------------------------------------------------------------- the active tab
+
+/**
+ * Hide every line outside the active tab's block. `setHiddenAreas` keeps the text, the model
+ * offsets and Volar intact — only the view is scoped, and the line numbers keep counting.
+ * The host recomputes `visible` whenever the source changes, which is what re-syncs the
+ * ranges after an edit adds or removes lines.
+ */
+function applyVisible() {
+  const ed = instance.value
+  const model = ed?.getModel()
+  if (!ed || !model) return
+  const v = props.visible
+  const ranges: IRange[] = []
+  if (v) {
+    if (v.first > 1) ranges.push(new Range(1, 1, v.first - 1, 1))
+    if (v.last < model.getLineCount()) ranges.push(new Range(v.last + 1, 1, model.getLineCount(), 1))
+  }
+  ;(ed as unknown as { setHiddenAreas(r: IRange[], source?: unknown): void }).setHiddenAreas(ranges, 'sprint')
+  // A caret in a hidden line would edit text the user cannot see: keep it inside the block.
+  const pos = ed.getPosition()
+  if (v && pos && (pos.lineNumber < v.first || pos.lineNumber > v.last)) {
+    const line = pos.lineNumber < v.first ? v.first : v.last
+    ed.setPosition({ lineNumber: line, column: model.getLineFirstNonWhitespaceColumn(line) || 1 })
+  }
+}
+
+/** The overlay is the host's call, but never show it over text — a stale prop must not cover code. */
+const showEmpty = computed(() => {
+  if (!props.emptyText) return false
+  const lines = props.modelValue.split('\n')
+  const v = props.visible
+  return (v ? lines.slice(v.first - 1, v.last) : lines).join('').trim() === ''
+})
+/** Backticks mark machine text: `.title` is a class name (accent), `mm` is plain mono. */
+const emptyBody = computed(() =>
+  (props.emptyText?.body ?? '').split('`').map((text, i) => ({ text, mono: i % 2 === 1, klass: i % 2 === 1 && text.startsWith('.') })),
+)
+
 const syncUris = () => [
   mainUri(),
   Uri.parse(ENV_URI),
@@ -64,35 +116,112 @@ const syncUris = () => [
   ...Object.keys(props.libraryComponents).map((name) => Uri.parse(componentUri(name))),
 ]
 
-// ---------------------------------------------------------------- folding
+// ---------------------------------------------------------------- insert popup
+// A `+` follows the caret wherever something can be dropped in: on a blank template line it
+// offers components / snippets / HTML (filtered by the parent element); in text, inside `{{ }}`
+// or in a bound attribute it offers variables. Picking inserts with the caret in the right spot.
 
-let foldingRegistered = false
-function registerFolding() {
-  if (foldingRegistered) return
-  foldingRegistered = true
-  languages.registerFoldingRangeProvider('vue', {
-    provideFoldingRanges: (model) =>
-      foldRegions(model.getValue()).map((r) => ({ start: r.start, end: r.end, kind: languages.FoldingRangeKind.Region })),
-  })
+type Mode = 'components' | 'variables'
+type Spot = { modes: Mode[]; context: ReturnType<typeof cursorContext> | 'blank' }
+const plus = ref<{ top: number; left: number; modes: Mode[] } | null>(null)
+const popup = ref<{ top: number; left: number; from: number; mode: Mode; context: Spot['context'] } | null>(null)
+const query = ref('')
+const cursor = ref(0)
+
+/** What can be inserted at the caret: components and/or variables, and where the caret sits. */
+function spotAt(ed: monacoEditor.IStandaloneCodeEditor): Spot | null {
+  const pos = ed.getPosition(), model = ed.getModel()
+  if (!pos || !model) return null
+  const offset = model.getOffsetAt(pos)
+  if (model.getLineContent(pos.lineNumber).trim() === '' && props.insertables)
+    return { modes: props.variables ? ['components', 'variables'] : ['components'], context: 'blank' }
+  if (!props.variables) return null
+  // Mid-tag (`<di|`, `<div cla|`): the user is typing a tag; nothing to offer until it closes.
+  if (/<[^>]*$/.test(model.getLineContent(pos.lineNumber).slice(0, pos.column - 1))) return null
+  const context = cursorContext(model.getValue(), offset)
+  if (context === 'text') return { modes: props.insertables ? ['components', 'variables'] : ['variables'], context }
+  if (context === 'interpolation' || context === 'attr-value-binding') return { modes: ['variables'], context }
+  if (context === 'attr-value-static') {
+    // An empty static value can become a binding (`:size="row.x"`); a filled one cannot hold a variable.
+    const el = elementAt(model.getValue(), offset)
+    const prop = el?.props.find((p) => p.valueLoc && offset >= p.valueLoc.start && offset <= p.valueLoc.end)
+    if (prop && !prop.value) return { modes: ['variables'], context }
+  }
+  return null
 }
 
-/** A line is hidden when it and the next one sit at the same vertical offset. */
-function foldedIds(ed: monacoEditor.IStandaloneCodeEditor): string[] {
-  return foldRegions(ed.getModel()!.getValue())
-    .filter((r) => ed.getTopForLineNumber(r.start + 1) === ed.getTopForLineNumber(r.start + 2))
-    .map((r) => r.id)
-}
+const items = computed<InsertItem[]>(() => {
+  if (!popup.value) return []
+  const { mode, context, from } = popup.value
+  let all: InsertItem[]
+  if (mode === 'components') {
+    const parent = elementAt(instance.value?.getValue() ?? '', from)
+    all = insertItems(props.insertables!.components, props.insertables!.snippets, parent?.tag ?? null)
+  } else {
+    const bare = context === 'interpolation' || context === 'attr-value-binding' || context === 'attr-value-static'
+    all = (props.variables ?? []).map((v) => ({ name: v.path, kind: 'variable', hint: v.hint, text: bare ? `${v.path}|` : `{{ ${v.path} }}|` }))
+  }
+  const q = query.value.trim().toLowerCase()
+  return q ? all.filter((i) => i.name.toLowerCase().includes(q)) : all
+})
 
-function applyFolded(ed: monacoEditor.IStandaloneCodeEditor, ids: string[]) {
-  const lines = foldRegions(ed.getModel()!.getValue()).filter((r) => ids.includes(r.id)).map((r) => r.start)
-  if (lines.length) ed.trigger('sprint', 'editor.fold', { selectionLines: lines })
+function placePlus() {
+  const ed = instance.value
+  const spot = ed && spotAt(ed)
+  // Right of the caret's line end, so the buttons never sit on top of text.
+  const line = ed?.getPosition()?.lineNumber
+  const vis = spot && line && ed!.getScrolledVisiblePosition({ lineNumber: line, column: ed!.getModel()!.getLineMaxColumn(line) })
+  plus.value = vis && vis.top >= 0 && vis.height ? { top: vis.top, left: vis.left, modes: spot.modes } : null
+}
+function openPopup(mode: Mode) {
+  const ed = instance.value!
+  const spot = spotAt(ed)
+  const pos = ed.getPosition()!
+  const vis = spot && ed.getScrolledVisiblePosition(pos)
+  if (!spot || !vis) return
+  popup.value = { top: vis.top + vis.height + 4, left: vis.left, from: ed.getModel()!.getOffsetAt(pos), mode, context: spot.context }
+  query.value = ''
+  cursor.value = 0
+  void nextTick(() => container.value?.querySelector<HTMLInputElement>('.sprint-insert input')?.focus())
+}
+function closePopup(refocus = true) {
+  popup.value = null
+  if (refocus) instance.value?.focus()
+}
+function pick(item: InsertItem | undefined) {
+  if (!item || !popup.value) return
+  const { from, context } = popup.value
+  const model = instance.value!.getModel()!
+  if (context === 'attr-value-static') {
+    // `size=""` → `:size="row.x"`: one edit on the attribute, caret after it.
+    const el = elementAt(model.getValue(), from)!
+    const prop = el.props.find((p) => p.valueLoc && from >= p.valueLoc.start && from <= p.valueLoc.end)!
+    const edit = attributeEdit(el, prop.name, 'set-binding', item.name)
+    handle.executeEdits([edit])
+    handle.setCaret(edit.start + edit.text.length)
+    return closePopup()
+  }
+  // Multi-line inserts follow the indentation of the line they land on.
+  const pos = model.getPositionAt(from)
+  const indent = model.getLineContent(pos.lineNumber).slice(0, model.getLineFirstNonWhitespaceColumn(pos.lineNumber) - 1 || pos.column - 1)
+  const raw = item.text.replaceAll('\n', '\n' + indent)
+  const caretAt = raw.indexOf('|')
+  const text = raw.replace('|', '')
+  handle.executeEdits([{ start: from, end: from, text }])
+  handle.setCaret(from + (caretAt < 0 ? text.length : caretAt))
+  closePopup()
+}
+function onPopupKey(e: KeyboardEvent) {
+  if (e.key === 'ArrowDown') { cursor.value = Math.min(cursor.value + 1, items.value.length - 1); e.preventDefault() }
+  else if (e.key === 'ArrowUp') { cursor.value = Math.max(cursor.value - 1, 0); e.preventDefault() }
+  else if (e.key === 'Enter') { pick(items.value[cursor.value]); e.preventDefault() }
+  else if (e.key === 'Escape') { closePopup(); e.preventDefault() }
 }
 
 // ---------------------------------------------------------------- lifecycle
 
 onMounted(() => {
   syncEnvModels()
-  registerFolding()
 
   const model = getOrCreateModel(mainUri(), 'vue', props.modelValue)
   const mono = getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim()
@@ -105,12 +234,12 @@ onMounted(() => {
     fontSize: 11.5,
     lineHeight: 20,
     tabSize: 2,
+    autoIndent: 'full', // Enter / closing tag / `}` re-indent by the language rules above
     // The gutter carries the spacing; nothing between the numbers and the code but this.
     lineNumbersMinChars: 2,
     lineDecorationsWidth: 12,
     glyphMargin: false,
     padding: { top: 8, bottom: 8 },
-    renderLineHighlight: 'none',
     automaticLayout: true,
     scrollBeyondLastLine: false,
     minimap: { enabled: false },
@@ -128,6 +257,9 @@ onMounted(() => {
     // No hover cards (Vue SFC docs, type signatures): prop docs live in the components pane and
     // the property editor. Diagnostics still show as squiggles + Status rows.
     hover: { enabled: false },
+    stickyScroll: { enabled: false },
+    folding: false, // the tabs are the folding
+    renderLineHighlight: 'none',
   })
   instance.value = ed
   disposables.push(ed)
@@ -193,6 +325,7 @@ onMounted(() => {
     const right = b.lineNumber > a.lineNumber ? contentLeft + scrollW - ed.getScrollLeft() - 8 : xOf(b.lineNumber, b.column) + PAD
     const top = ed.getTopForLineNumber(a.lineNumber) - ed.getScrollTop() - 2
     const height = ed.getBottomForLineNumber(b.lineNumber) - ed.getTopForLineNumber(a.lineNumber) + 4
+    if (height <= 4) return (clipNode.style.display = 'none') // every line of the range is hidden (e.g. <meta>)
     const M = 16 // room for the drop shadow inside the clip
     const clipLeft = Math.max(contentLeft - 8, left - M)
     Object.assign(clipNode.style, { display: 'block', left: `${clipLeft}px`, top: `${top - M}px`, width: `${right + M - clipLeft}px`, height: `${height + 2 * M}px` })
@@ -219,15 +352,28 @@ onMounted(() => {
   disposables.push(
     ed.onDidChangeModelContent(() => {
       emit('update:modelValue', ed.getValue())
+      // Edits shift Monaco's tracked hidden ranges; re-assert ours (a no-op when unchanged) so a
+      // multi-line change inside the block cannot leave stale gaps.
+      void nextTick(applyVisible)
     }),
     ed.onDidChangeCursorPosition(() => {
       const offset = ed.getModel()!.getOffsetAt(ed.getPosition()!)
       emit('caret', offset)
       for (const cb of caretListeners) cb(offset)
+      placePlus()
+      if (popup.value && offset !== popup.value.from) closePopup(false)
     }),
-    ed.onDidChangeHiddenAreas(() => emit('update:foldedRegions', foldedIds(ed))),
+    ed.onDidScrollChange(placePlus),
+    ed.onDidLayoutChange(placePlus),
   )
-  applyFolded(ed, props.foldedRegions)
+  watch(() => [props.insertables, props.variables], placePlus)
+
+  // One tab = one visible line range; everything else is hidden (README-tabs §1). Line numbers
+  // keep counting, which is the cheapest proof that this is still one file.
+  applyVisible()
+  // Hidden areas live on the view model, i.e. per model: redo them when the model swaps.
+  disposables.push(ed.onDidChangeModel(applyVisible))
+  watch(() => props.visible, applyVisible, { deep: true })
 
   // The theme lives on <html>; rebuild it from the tokens when the class flips.
   const observer = new MutationObserver(() => monacoEditor.setTheme(defineSprintTheme()))
@@ -272,9 +418,33 @@ watch(
 
 const handle: EditorHandle = {
   getValue: () => instance.value?.getValue() ?? props.modelValue,
+  async format(range) {
+    const ed = instance.value, model = ed?.getModel()
+    if (!ed || !model) return
+    if (!range) return void (await ed.getAction('editor.action.formatDocument')?.run())
+    // formatSelection works on the current selection: set it, format, then put the caret back.
+    const before = ed.getSelection(), scroll = ed.getScrollTop()
+    const a = model.getPositionAt(range.start), b = model.getPositionAt(range.end)
+    ed.setSelection(new Range(a.lineNumber, a.column, b.lineNumber, b.column))
+    await ed.getAction('editor.action.formatSelection')?.run()
+    if (before) ed.setSelection(before)
+    ed.setScrollTop(scroll)
+  },
   getOffset() {
     const ed = instance.value
     return ed ? ed.getModel()!.getOffsetAt(ed.getPosition()!) : 0
+  },
+  getSelection() {
+    const ed = instance.value
+    if (!ed) return { start: 0, end: 0 }
+    const model = ed.getModel()!
+    const sel = ed.getSelection()!
+    return { start: model.getOffsetAt(sel.getStartPosition()), end: model.getOffsetAt(sel.getEndPosition()) }
+  },
+  revealOffset(offset) {
+    const ed = instance.value
+    if (!ed) return
+    ed.revealPositionInCenterIfOutsideViewport(ed.getModel()!.getPositionAt(offset))
   },
   setCaret(offset, endOffset) {
     const ed = instance.value
@@ -314,7 +484,37 @@ defineExpose(handle)
 </script>
 
 <template>
-  <div ref="container" class="sprint-editor" />
+  <div ref="container" class="sprint-editor">
+    <!-- An empty block gets a centred sentence instead of a bare cursor (README-tabs §7).
+         Never captures clicks: typing is what dismisses it. -->
+    <div v-if="showEmpty" class="sprint-empty">
+      <p class="title">{{ emptyText!.title }}</p>
+      <p class="body">
+        <span v-for="(part, i) in emptyBody" :key="i" :class="{ mono: part.mono, klass: part.klass }">{{ part.text }}</span>
+      </p>
+    </div>
+
+    <!-- `+ component` / `+ variable` right of the caret, whichever fit here; the popup hangs under them. -->
+    <div v-if="plus && !popup" class="sprint-plus" :style="{ top: `${plus.top}px`, left: `${plus.left}px` }">
+      <button
+        v-for="mode in plus.modes" :key="mode" type="button" @mousedown.prevent @click="openPopup(mode)"
+      >+ {{ mode === 'components' ? 'component' : 'variable' }}</button>
+    </div>
+    <div v-if="popup" class="sprint-insert" :style="{ top: `${popup.top}px`, left: `${popup.left}px` }" @keydown="onPopupKey">
+      <input v-model="query" :placeholder="popup.mode === 'variables' ? 'variable…' : 'component or element…'" @input="cursor = 0">
+      <ul role="listbox">
+        <li
+          v-for="(item, i) in items" :key="item.kind + item.name" role="option" :aria-selected="i === cursor"
+          :class="{ on: i === cursor }" @mouseenter="cursor = i" @mousedown.prevent="pick(item)"
+        >
+          <span class="badge" :class="item.kind">{{ item.kind === 'html' ? '<>' : item.kind === 'snippet' ? 'S' : item.kind === 'variable' ? '{ }' : 'C' }}</span>
+          <span class="name">{{ item.name }}</span>
+          <span class="hint">{{ item.hint }}</span>
+        </li>
+        <li v-if="!items.length" class="none">nothing fits here</li>
+      </ul>
+    </div>
+  </div>
 </template>
 
 <style>
@@ -325,7 +525,98 @@ defineExpose(handle)
   overflow: hidden;
 }
 
+.sprint-editor .sprint-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 44px;
+  text-align: center;
+  pointer-events: none;
+}
+.sprint-editor .sprint-empty p {
+  margin: 0;
+  font-family: var(--font-sans, system-ui, sans-serif);
+}
+.sprint-editor .sprint-empty .title {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.sprint-editor .sprint-empty .body {
+  max-width: 44ch;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+}
+.sprint-editor .sprint-empty .mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+}
+.sprint-editor .sprint-empty .klass {
+  color: oklch(0.5 0.14 40);
+}
+
 /* Element at caret: selection is accent + 1px accent-border ring, never a fill (design §1). */
+.sprint-plus {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  gap: 4px;
+  margin: 1px 0 0 10px; /* right of the caret */
+}
+.sprint-plus button {
+  height: 18px;
+  padding: 0 6px;
+  border: 1px dashed var(--border);
+  border-radius: 5px;
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
+}
+.sprint-plus button:hover { border-color: var(--primary); border-style: solid; background: var(--accent); color: var(--primary); }
+.sprint-insert {
+  position: absolute;
+  z-index: 60; /* above Monaco's overlays (suggest widget is 40) */
+  width: 300px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--popover);
+  box-shadow: 0 18px 40px -14px rgb(0 0 0 / 0.3);
+}
+.sprint-insert input {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--input);
+  border-radius: 6px;
+  background: var(--card);
+  font-size: 12px;
+  outline: none;
+}
+.sprint-insert input:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
+.sprint-insert ul { max-height: 260px; margin: 6px 0 0; padding: 0; overflow: auto; list-style: none; }
+.sprint-insert li { display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 6px; border-radius: 6px; cursor: default; }
+.sprint-insert li.on { background: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-border); }
+.sprint-insert li.none { color: var(--muted-foreground); font-size: 11px; }
+.sprint-insert .badge {
+  width: 20px; height: 20px; display: grid; place-items: center; border-radius: 5px;
+  background: var(--info-bg); color: var(--info); font-family: var(--font-mono); font-size: 9.5px; font-weight: 600;
+}
+.sprint-insert .badge.html { background: var(--muted); color: var(--muted-foreground); }
+.sprint-insert .name { font-family: var(--font-mono); font-size: 11.5px; font-weight: 500; }
+.sprint-insert .hint { margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--muted-foreground); }
+
 .sprint-editor .sprint-element-bold {
   font-weight: 600;
 }

@@ -325,7 +325,7 @@ function sfcBlock(source: string, node: WithInner, base: number): Block | null {
     const full = bodyRoot?.children.some((c) => c.type === 1 && c.tag === 'template')
     if (full) children = (bodyRoot!.children.filter((c): c is WithInner => c.type === 1).map((c) => sfcBlock(source, c, inner[0])).filter((b): b is Block => !!b))
     else { const plain = tryParse(body, false); children = plain ? elementBlocks(plain.children, inner[0]) : [] }
-  } else if (inner) children = braceBlocks(source, inner[0], inner[1]) // script, style
+  } else if (inner) children = braceBlocks(source, inner[0], inner[1], node.tag !== 'style') // script, style
   return { kind: 'sfc', start, end, children }
 }
 
@@ -348,7 +348,7 @@ function isClosed(node: ElementNode): boolean {
  * comments. Each block starts at its head — back from `{` to the previous `{ } ; ,` or line
  * start. Unbalanced text yields one `broken` block over the whole range instead.
  */
-export function braceBlocks(source: string, from: number, to: number): Block[] {
+export function braceBlocks(source: string, from: number, to: number, commaStops = true): Block[] {
   const stack: Block[] = [{ kind: 'brace', start: from, end: to, children: [] }]
   let i = from
   const skipTo = (end: string) => { const j = source.indexOf(end, i + 1); i = j < 0 ? to : j + end.length - 1 }
@@ -361,7 +361,7 @@ export function braceBlocks(source: string, from: number, to: number): Block[] {
     else if (c === '}') {
       if (stack.length === 1) return [{ kind: 'broken', start: from, end: to, children: [] }] // stray close
       const open = stack.pop()!
-      open.start = headStart(source, open.start, from)
+      open.start = headStart(source, open.start, from, commaStops)
       open.end = i + 1
       stack[stack.length - 1].children.push(open)
     }
@@ -370,9 +370,11 @@ export function braceBlocks(source: string, from: number, to: number): Block[] {
   return stack.length === 1 ? stack[0].children : [{ kind: 'broken', start: from, end: to, children: [] }] // unclosed brace
 }
 
-function headStart(source: string, at: number, floor: number): number {
+/** `commaStops`: `,` ends a head in JSON/JS (`"size": {`), but not in CSS (`.a, .b {` is one selector). */
+function headStart(source: string, at: number, floor: number, commaStops = true): number {
+  const stops = commaStops ? '{};,\n' : '{};\n'
   let i = at
-  while (i > floor && !'{};,\n'.includes(source[i - 1])) i--
+  while (i > floor && !stops.includes(source[i - 1])) i--
   while (i < at && (source[i] === ' ' || source[i] === '\t')) i++
   // `<style scoped>.k {` on one line: the head is `.k`, not the tag.
   if (source[i] === '<') { const gt = source.indexOf('>', i); if (gt > 0 && gt < at) i = gt + 1 }

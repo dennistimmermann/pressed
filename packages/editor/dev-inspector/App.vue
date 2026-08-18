@@ -77,6 +77,8 @@ const handle: EditorHandle = {
     offset.value = start
     nextTick(() => textarea.value?.setSelectionRange(start, end))
   },
+  getSelection: () => ({ start: textarea.value?.selectionStart ?? 0, end: textarea.value?.selectionEnd ?? 0 }),
+  revealOffset: () => {},
   executeEdits(edits) {
     let text = source.value
     for (const edit of [...edits].sort((a, b) => b.start - a.start))

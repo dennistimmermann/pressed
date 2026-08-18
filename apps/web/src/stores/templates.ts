@@ -1,4 +1,4 @@
-import { reactive } from 'vue'
+import { reactive, toRaw } from 'vue'
 import { parseMeta } from '@sprint/core/template/meta.ts'
 import type { Assets } from '@sprint/core'
 
@@ -35,7 +35,8 @@ export const templateStore = {
   list: () => tx<TemplateRecord[]>('readonly', (s) => s.getAll()),
   get: (id: string) => tx<TemplateRecord | undefined>('readonly', (s) => s.get(id)),
   async put(record: Omit<TemplateRecord, 'updatedAt'>) {
-    const full = { ...record, updatedAt: Date.now() }
+    // IndexedDB structured-clones the value: Vue proxies (assets from the reactive store) must be unwrapped first.
+    const full = { ...record, assets: toRaw(record.assets), updatedAt: Date.now() }
     await tx('readwrite', (s) => s.put(full))
     return full
   },

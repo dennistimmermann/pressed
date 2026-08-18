@@ -15,6 +15,9 @@ const raw = import.meta.glob<string>(
     '../../../../node_modules/typescript/lib/lib.*.d.ts',
     '../../../../node_modules/@vue/language-core/types/*.d.ts',
     '../../../../node_modules/vue/dist/*.d.*ts',
+    // `vue/jsx-runtime` is where the codegen reads `JSX.IntrinsicElements` — the HTML tag list.
+    '../../../../node_modules/vue/jsx-runtime/{index.d.ts,package.json}',
+    '../../../../node_modules/vue/jsx.d.ts',
     '../../../../node_modules/@vue/{runtime-core,runtime-dom,reactivity,shared}/dist/*.d.ts',
     '../../../../node_modules/csstype/index.d.ts',
     '../../../../node_modules/{vue,csstype}/package.json',
