@@ -9,23 +9,29 @@ export type { RuntimeClient } from './runtime-client'
 
 // One tab per block (design README-tabs): the model the strip and the editor both read.
 export { tabsModel, tabAt, tabKey, blockOf, insertBlock } from './tabs'
-export type { TabsModel, TabRef, TabBlock, SnippetScope, BlockKind } from './tabs'
+export type { TabsModel, TabRef, TabBlock, SnippetScope, BlockKind, Badge } from './tabs'
 
 // Panes — WP1/WP2 fill these in; the stubs keep host imports resolvable.
 export { default as SfcEditor } from './SfcEditor.vue'
 export { default as FileStrip } from './FileStrip.vue'
 export { default as BlockTabs } from './BlockTabs.vue'
+export { default as ScopeRow } from './ScopeRow.vue'
 export { default as LabelSetup } from './LabelSetup.vue'
-export { default as StylePane } from './StylePane.vue'
+export { default as InspectorPane } from './InspectorPane.vue'
 export { default as StatusPane } from './StatusPane.vue'
 export { default as PreviewPane } from './PreviewPane.vue'
-export { default as ComponentsPane } from './ComponentsPane.vue'
-export { default as VariablesPane } from './VariablesPane.vue'
-export { default as PropertyEditor } from './PropertyEditor.vue'
 export { default as ManageTemplates } from './ManageTemplates.vue'
+export { default as LayersPane } from './LayersPane.vue'
 
-// Source analysis at the caret (WP2): the host needs it to feed PropertyEditor.
-export { elementAt, cursorContext, attributeEdit, insertAt, insertVar } from './ast'
-export type { ElementInfo, PropInfo, CursorContext, Edit, Loc } from './ast'
+// Source analysis at the caret: the host needs it to feed the Inspector.
+export { elementAt, attributeEdit } from './ast'
+export type { ElementInfo, PropInfo, Edit, Loc } from './ast'
+// Codeless structure editing: each primitive is pure `(source, element) → edits + where it landed`.
+export {
+  parentOf, siblingsOf, elementTree, countMatching, matchingElements, moveElement, indentElement, outdentElement,
+  wrapElement, unwrapElement, duplicateElement, deleteElement, changeTag, setText, reparentElement,
+} from './ast'
+export type { LayerNode, StructureEdit } from './ast'
+export { HTML_TAGS, isHtmlTag } from './inspector/insert'
 export { ruleAt, parseRule, setDeclaration, parseLength, rulesIn, findRule } from './css'
-export type { Rule, Declaration } from './css'
+export type { Rule, Declaration, StyleTarget } from './css'

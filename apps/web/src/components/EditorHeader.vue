@@ -1,18 +1,20 @@
 <!--
-  The header of the whole editing area (file strip → block tabs): it spans the left column and
-  the editor body, so the panes visibly belong to the tab, not to the editor alone.
+  The two full-width strip rows above the work area (SPEC §2): the file row (36) with the mode
+  toggle, and the scope row (42) — the file tab, this file's snippets and, while a snippet scope
+  is active, the scope actions. The block tabs live in the editor pane header (SPEC §4.6).
 -->
 <script setup lang="ts">
 import { computed, ref, useTemplateRef, watch } from 'vue'
 import { onClickOutside, onKeyStroke } from '@vueuse/core'
-import { BlockTabs, FileStrip, LabelSetup } from '@sprint/editor'
+import { FileStrip, LabelSetup, ScopeRow } from '@sprint/editor'
+import type { EditorMode } from '@sprint/editor'
 import {
-  addBlock, badges, deleteSnippet, dirty, editor, enterScope, errorCount, filename, formatBlock, leaveScope, meta,
-  promoteSnippet, renameSnippet, save, switchTab, tabs, warningCount, writeMeta,
+  addBlock, badges, deleteSnippet, dirty, editor, enterScope, errorCount, filename, leaveScope, meta,
+  promoteSnippet, renameSnippet, save, tabs, warningCount, writeMeta,
 } from '@/stores/editor'
 
-defineProps<{ narrow?: boolean }>()
-defineEmits<{ 'save-as': [] }>()
+defineProps<{ mode?: EditorMode | null; modes?: EditorMode[]; sideBySide?: boolean }>()
+defineEmits<{ 'save-as': []; 'update:mode': [mode: EditorMode]; flip: [] }>()
 
 const pendingDelete = ref<string | null>(null)
 
@@ -48,19 +50,20 @@ watch(() => editor.labelSetupOpen, (open) => {
   <div ref="root" class="relative flex-none">
     <FileStrip
       class="flex-none"
-      :filename="filename" :dirty="dirty" :size-text="sizeText"
+      :dirty="dirty" :size-text="sizeText"
       :error-count="errorCount" :warning-count="warningCount" :saved-at="editor.savedAt ?? undefined"
+      :mode="mode" :modes="modes" :side-by-side="sideBySide"
+      @update:mode="$emit('update:mode', $event)" @flip="$emit('flip')"
       @save="save()" @save-as="$emit('save-as')" @manage="editor.manageOpen = true"
       @label-setup="editor.labelSetupOpen = true"
-      @format="formatBlock"
     />
 
-    <BlockTabs
+    <ScopeRow
       class="flex-none"
-      :model="tabs" :active="editor.activeTab" :scope="editor.activeTab.scope" :badges="badges"
-      :narrow="narrow"
-      @select="switchTab" @leave-scope="leaveScope" @enter-scope="enterScope"
-      @add="addBlock" @rename="renameSnippet(editor.activeTab.scope ?? '', $event)"
+      :model="tabs" :scope="editor.activeTab.scope" :file="filename" :dirty="dirty" :badges="badges"
+      leave-label="label"
+      @leave-scope="leaveScope" @enter-scope="enterScope" @add="addBlock('snippet')"
+      @rename="renameSnippet(editor.activeTab.scope ?? '', $event)"
       @promote="promoteSnippet" @delete="pendingDelete = $event"
     />
 
@@ -74,7 +77,7 @@ watch(() => editor.labelSetupOpen, (open) => {
     </div>
 
     <!-- Under `Label setup…` in the strip. -->
-    <div v-if="editor.labelSetupOpen" ref="setup" class="absolute top-[38px] z-30" :style="{ left: `${setupLeft}px` }">
+    <div v-if="editor.labelSetupOpen" ref="setup" class="absolute top-[36px] z-30" :style="{ left: `${setupLeft}px` }">
       <LabelSetup :meta="meta" :open="editor.labelSetupOpen" :printers="PRINTER_PROFILES" @update="writeMeta" @close="closeSetup" />
     </div>
   </div>

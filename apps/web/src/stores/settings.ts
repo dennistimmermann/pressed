@@ -1,4 +1,5 @@
 import { reactive, watch, watchEffect } from 'vue'
+import type { EditorMode, TabRef } from '@sprint/editor'
 
 /** A reactive object mirrored into localStorage. Plain modules, no Pinia — there is one app. */
 export function persisted<T extends object>(key: string, initial: T): T {
@@ -12,12 +13,26 @@ export function persisted<T extends object>(key: string, initial: T): T {
 export type Settings = {
   theme: 'light' | 'dark'
   printerId: string
-  /** Splitter layouts in percent, keyed by group id (design §3): `cols`, `left`, `centre`, `right`. */
-  paneSizes: Record<string, number[]>
+  /** Editor mode per template id (SPEC §6); `split` is the default. */
+  modeByTemplate: Record<string, EditorMode>
+  /** Scope + block per template id (SPEC §6): where you were in that file. */
+  tabByTemplate: Record<string, TabRef>
+  /** Work-area column widths in px — the design gives them in px, so percentages would lie. */
+  layersWidth: number
+  inspectorWidth: number
+  /** Which Layers sections are collapsed (SPEC §4.2: collapse persists). */
+  layersCollapsed: Record<'layers' | 'rules' | 'script', boolean>
+  /** Which Inspector sections are collapsed (SPEC §4.3). The keys are the element-mode names;
+      rule mode reuses them in order (props → SELECTOR, attributes → USED BY). */
+  inspectorCollapsed: Record<'props' | 'attributes' | 'style', boolean>
+  /** Canvas size inside Split mode (height, or width when side by side) and the flip. */
+  splitSize: number
+  splitSideBySide: boolean
   previewMode: 'rendered' | 'raster'
-  /** Dashed outlines around every component in the preview (design §3.5). */
-  outlines: boolean
-  /** The template to reopen on the next visit. The active *tab* is session state, not this. */
+  /** Canvas zoom (SPEC §6): Blocks and Split share one, the Code Preview keeps its own. */
+  zoomCanvas: 'fit' | number
+  zoomPreview: 'fit' | number
+  /** The template to reopen on the next visit. */
   lastTemplateId: string | null
   spoolmanUrl: string
 }
@@ -25,9 +40,17 @@ export type Settings = {
 export const settings = persisted<Settings>('sprint.settings', {
   theme: matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
   printerId: 'browser',
-  paneSizes: {},
+  modeByTemplate: {},
+  tabByTemplate: {},
+  layersWidth: 236,
+  inspectorWidth: 340,
+  layersCollapsed: { layers: false, rules: true, script: true },
+  inspectorCollapsed: { props: false, attributes: false, style: false },
+  splitSize: 326,
+  splitSideBySide: false,
   previewMode: 'rendered',
-  outlines: false,
+  zoomCanvas: 'fit',
+  zoomPreview: 'fit',
   lastTemplateId: null,
   spoolmanUrl: 'http://localhost:7912',
 })

@@ -32,6 +32,9 @@ export type SnippetScope = {
 }
 export type TabsModel = { blocks: TabBlock[]; snippets: SnippetScope[]; meta: { start: number; end: number } | null }
 
+/** Worst message level and how many, for one tab or one whole scope — what the troughs badge. */
+export type Badge = { level: 'error' | 'warning'; count: number }
+
 const TAG = /^<(\w+)([^>]*)>/
 const KINDS: BlockKind[] = ['template', 'style', 'script'] // strip order = use order, not file order
 

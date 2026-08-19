@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { Message } from './types'
 
 /**
@@ -13,13 +13,20 @@ const props = withDefaults(
     okSummary?: string
     /** Display name for messages whose `file` is `main`. */
     filename?: string
+    /** One neutral row that is neither error nor warning (E10: `no data connected …`). */
+    info?: string
   }>(),
-  { okSummary: '', filename: 'main' },
+  { okSummary: '', filename: 'main', info: '' },
 )
 
 defineEmits<{ jump: [where: { file: string; line?: number; col?: number }] }>()
 
 const hasError = computed(() => props.messages.some((m) => m.kind !== 'purity'))
+const errors = computed(() => props.messages.filter((m) => m.kind !== 'purity').length)
+const warnings = computed(() => props.messages.filter((m) => m.kind === 'purity').length)
+
+// A 30px strip that expands to the message list (SPEC §4.7); the parent caps how far.
+const open = ref(false)
 
 const tag = (m: Message) => m.kind.toUpperCase()
 
@@ -34,12 +41,16 @@ function where(m: Message): string {
 
 <template>
   <section class="pane">
-    <header class="head">
+    <button type="button" class="head" :aria-expanded="open" @click="open = !open">
       <span class="eyebrow">Status</span>
-      <span class="origin">runtime frame · null origin</span>
-    </header>
+      <span class="origin">{{ hasError ? `${messages.length} message${messages.length === 1 ? '' : 's'}` : okSummary || 'runtime frame · null origin' }}</span>
+      <span class="counts">
+        <span class="count error">● {{ errors }}</span>
+        <span class="count warning">● {{ warnings }}</span>
+      </span>
+    </button>
 
-    <div class="rows" role="log" aria-live="polite">
+    <div v-if="open" class="rows" role="log" aria-live="polite">
       <button
         v-for="(m, i) in messages"
         :key="i"
@@ -53,6 +64,11 @@ function where(m: Message): string {
         <span class="loc">{{ where(m) }}</span>
       </button>
 
+      <div v-if="info" class="row info">
+        <span class="tag">INFO</span>
+        <span class="text">{{ info }}</span>
+      </div>
+
       <div v-if="!hasError && okSummary" class="row ok">
         <span class="tag">COMPILE</span>
         <span class="loc">{{ okSummary }}</span>
@@ -65,16 +81,36 @@ function where(m: Message): string {
 .pane {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  max-height: 100%;
   min-height: 0;
 }
 .head {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 34px;
+  flex: none;
+  width: 100%;
+  height: 30px;
   padding: 0 10px;
+  border: 0;
   border-bottom: 1px solid var(--border);
+  background: transparent;
+  text-align: left;
+}
+.counts {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.count {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+}
+.count.error {
+  color: var(--destructive);
+}
+.count.warning {
+  color: var(--warning);
 }
 .eyebrow {
   font-size: 10px;
@@ -85,6 +121,10 @@ function where(m: Message): string {
   color: var(--muted-foreground);
 }
 .origin {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 10px;
   color: var(--muted-foreground);
@@ -95,6 +135,7 @@ function where(m: Message): string {
   flex-direction: column;
   gap: 4px;
   padding: 8px;
+  min-height: 0;
   overflow: auto;
 }
 
@@ -147,6 +188,13 @@ button.row:hover {
 }
 .ok .tag {
   color: oklch(0.45 0.08 150);
+}
+/* Neutral: an info row is not a fault, so it borrows the app's own muted surface. */
+.info {
+  background: var(--muted);
+}
+.info .tag {
+  color: var(--muted-foreground);
 }
 
 :global(.dark) .fault {

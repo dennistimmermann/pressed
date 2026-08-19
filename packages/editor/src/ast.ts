@@ -9,6 +9,7 @@
  * with its start offset as the base.
  */
 import { parse, type ElementNode, type RootNode, type TemplateChildNode } from '@vue/compiler-dom'
+import { isHtmlTag } from './inspector/insert'
 
 export type Loc = { start: number; end: number }
 export type Edit = { start: number; end: number; text: string }
@@ -37,16 +38,13 @@ export type ElementInfo = {
   children: Loc[]
   /** False when the end tag is missing (the parser closed it implicitly) — nothing to box then. */
   wellFormed: boolean
+  /**
+   * The element's own content, when it has no child elements: the range between the tags,
+   * trimmed of the whitespace the indentation owns. Present (with `value: ''`) for an empty
+   * element too, so the text field can fill one; absent for self-closing and void tags.
+   */
+  text?: { start: number; end: number; value: string }
 }
-
-
-export type CursorContext =
-  | 'text'
-  | 'attr-value-binding'
-  | 'attr-value-static'
-  | 'interpolation'
-  | 'script'
-  | 'other'
 
 // ---------------------------------------------------------------- parsing
 
@@ -143,8 +141,26 @@ function toElementInfo(node: ElementNode, base: number, file: ElementInfo['file'
     children: node.children
       .filter((c): c is ElementNode => c.type === 1)
       .map((c) => ({ start: base + c.loc.start.offset, end: base + c.loc.end.offset })),
-    wellFormed: !!node.isSelfClosing || VOID_TAGS.has(node.tag) || new RegExp(`</\\s*${node.tag}\\s*>$`, 'i').test(node.loc.source),
+    wellFormed: isClosed(node),
+    ...textOf(node, base),
   }
+}
+
+/** `{ text }` when the element's children are only text and interpolations — else nothing. */
+function textOf(node: ElementNode, base: number): { text?: ElementInfo['text'] } {
+  if (node.isSelfClosing || VOID_TAGS.has(node.tag) || !isClosed(node)) return {}
+  const kids = node.children
+  if (kids.some((c) => c.type !== 2 && c.type !== 5)) return {}
+  if (!kids.length) {
+    // `<div></div>`: the empty range sits right before the close tag, which is the last `</`.
+    const at = base + node.loc.start.offset + node.loc.source.lastIndexOf('</')
+    return { text: { start: at, end: at, value: '' } }
+  }
+  const raw = kids.map((k) => k.loc.source).join('')
+  const lead = raw.length - raw.trimStart().length
+  const start = base + kids[0].loc.start.offset + lead
+  const end = base + kids[kids.length - 1].loc.end.offset - (raw.length - raw.trimEnd().length)
+  return { text: { start, end: Math.max(start, end), value: raw.trim() } }
 }
 
 const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr'])
@@ -180,47 +196,6 @@ function unquote(loc: { start: { offset: number }; end: { offset: number }; sour
   }
 }
 
-// ---------------------------------------------------------------- cursorContext
-
-/** What kind of place the caret is in — decides `{{ row.x }}` versus `row.x`. */
-export function cursorContext(source: string, offset: number): CursorContext {
-  const block = blockAt(source, offset)
-  if (block === 'script') return 'script'
-  if (!block) return 'other'
-  return contextIn(source, block.nodes, offset, block.base) ?? 'text'
-}
-
-function contextIn(
-  source: string,
-  nodes: TemplateChildNode[],
-  offset: number,
-  base: number,
-): CursorContext | null {
-  for (const node of nodes) {
-    if (!contains(node, offset, base)) continue
-    if (node.type === 5) return 'interpolation'
-    if (node.type === 2) return 'text'
-    if (node.type !== 1) continue
-
-    for (const prop of node.props) {
-      const value = toPropInfo(prop, base).valueLoc
-      if (value && offset >= value.start && offset <= value.end)
-        return prop.type === 7 ? 'attr-value-binding' : 'attr-value-static'
-    }
-    // Not in a value: either still in the open tag, or in the element's content.
-    return contextIn(source, node.children, offset, base) ?? (offset < openTagEnd(source, node, base) ? 'other' : 'text')
-  }
-  return null
-}
-
-/** Offset just past the open tag's `>`. Safe to scan for: attribute values are quoted and skipped. */
-function openTagEnd(source: string, node: ElementNode, base: number): number {
-  const last = node.props[node.props.length - 1]
-  const from = last ? base + last.loc.end.offset : base + node.loc.start.offset + 1 + node.tag.length
-  const gt = source.indexOf('>', from)
-  return gt < 0 ? base + node.loc.end.offset : gt + 1
-}
-
 // ---------------------------------------------------------------- edits
 
 /**
@@ -252,18 +227,6 @@ export function attributeEdit(
 
 function escapeAttr(value: string): string {
   return value.replace(/"/g, '&quot;')
-}
-
-/** Plain insert at the caret. */
-export function insertAt(offset: number, text: string): Edit {
-  return { start: offset, end: offset, text }
-}
-
-/** `{{ row.x }}` in text, bare `row.x` where an expression is already being written. */
-export function insertVar(source: string, offset: number, path: string): Edit {
-  const context = cursorContext(source, offset)
-  const bare = context === 'attr-value-binding' || context === 'interpolation'
-  return insertAt(offset, bare ? path : `{{ ${path} }}`)
 }
 
 // ---------------------------------------------------------------- blocks / boxAt
@@ -380,4 +343,386 @@ function headStart(source: string, at: number, floor: number, commaStops = true)
   if (source[i] === '<') { const gt = source.indexOf('>', i); if (gt > 0 && gt < at) i = gt + 1 }
   while (i < at && (source[i] === ' ' || source[i] === '\t')) i++
   return i
+}
+
+// ---------------------------------------------------------------- structure
+
+/**
+ * The result of a structure command: text-range edits (sorted descending, so applying them
+ * back to front keeps the earlier offsets valid) plus where the element ended up in the
+ * *new* text — the host re-selects it there so the caret follows what you just moved.
+ */
+export type StructureEdit = { edits: Edit[]; selectAt: number | null }
+
+/** Nothing to do: a malformed element, a first sibling asked to move up, a void asked to nest. */
+const NONE: StructureEdit = { edits: [], selectAt: null }
+
+/**
+ * Only elements *inside* a template block may be restructured. The caret in empty template
+ * space resolves to the block's own `<template>` tag (`elementAt`'s fallback) — deleting or
+ * wrapping that would eat the block.
+ */
+function editable(source: string, el: ElementInfo): boolean {
+  if (!el.wellFormed) return false
+  const block = blockAt(source, el.loc.start)
+  return !!block && block !== 'script' && block.self.loc.start !== el.loc.start
+}
+
+const done = (edits: Edit[], selectAt: number | null): StructureEdit => ({
+  edits: [...edits].sort((a, b) => b.start - a.start),
+  selectAt,
+})
+
+/** The element containing `el`, or null when `el` is a direct child of its block. */
+export function parentOf(source: string, el: ElementInfo): ElementInfo | null {
+  const block = blockAt(source, el.loc.start)
+  if (!block || block === 'script') return null
+  return parentIn(block.nodes, el, block.base, block.file)
+}
+
+function parentIn(nodes: TemplateChildNode[], el: ElementInfo, base: number, file: ElementInfo['file']): ElementInfo | null {
+  for (const node of nodes) {
+    if (node.type !== 1) continue
+    const start = base + node.loc.start.offset
+    if (start > el.loc.start || base + node.loc.end.offset < el.loc.end) continue
+    if (start === el.loc.start) return null // this *is* el: nothing deeper contains it
+    return parentIn(node.children, el, base, file) ?? toElementInfo(node, base, file)
+  }
+  return null
+}
+
+/** The ranges of `el` and the elements beside it, in source order (`el` included). */
+export function siblingsOf(source: string, el: ElementInfo): Loc[] {
+  const parent = parentOf(source, el)
+  if (parent) return parent.children
+  const block = blockAt(source, el.loc.start)
+  if (!block || block === 'script') return []
+  return block.nodes
+    .filter((n): n is ElementNode => n.type === 1)
+    .map((n) => ({ start: block.base + n.loc.start.offset, end: block.base + n.loc.end.offset }))
+}
+
+/** One row of the Layers tree. */
+export type LayerNode = {
+  tag: string
+  loc: Loc
+  classes: string[]
+  /** Not a plain HTML element — a library component or a snippet of this file. */
+  isComponent: boolean
+  /** `<img />`, `<temp />`: nothing can be dropped inside it. */
+  selfClosing: boolean
+  /** `v-if` / `v-for` … — the right-aligned mono hints of a Layers row. */
+  hints: string[]
+  children: LayerNode[]
+}
+
+const HINTED = new Set(['if', 'else-if', 'else', 'for'])
+
+/**
+ * The element tree of one template block. `blockLoc` is the block's own range (main template
+ * or a snippet's); snippet bodies are re-parsed with their start as the offset base, which
+ * `blockAt` already does — so ask it about a point just inside the block's opening tag.
+ */
+export function elementTree(source: string, blockLoc: Loc): LayerNode[] {
+  const block = blockAt(source, blockLoc.start + 1)
+  if (!block || block === 'script') return []
+  return layerNodes(block.nodes, block.base)
+}
+
+function layerNodes(nodes: TemplateChildNode[], base: number): LayerNode[] {
+  const out: LayerNode[] = []
+  for (const node of nodes) {
+    if (node.type !== 1) continue
+    out.push({
+      tag: node.tag,
+      loc: { start: base + node.loc.start.offset, end: base + node.loc.end.offset },
+      classes: (attrValue(node, 'class') ?? '').split(/\s+/).filter(Boolean),
+      isComponent: !isHtmlTag(node.tag),
+      selfClosing: !!node.isSelfClosing || VOID_TAGS.has(node.tag),
+      hints: node.props.filter((p) => p.type === 7 && HINTED.has(p.name)).map((p) => `v-${(p as { name: string }).name}`),
+      children: layerNodes(node.children, base),
+    })
+  }
+  return out
+}
+
+/**
+ * The elements of the tree a rule's selector matches — the Inspector's `USED BY` chips, and
+ * what the preview outlines while a rule is selected.
+ * ponytail: simple selectors only (`*`, `tag`, `.class`, comma lists); a descendant or
+ * attribute selector matches nothing. Rules in a label's style block are simple in practice.
+ */
+export function matchingElements(tree: LayerNode[], selector: string): LayerNode[] {
+  const parts = selector.split(',').map((s) => s.trim()).filter(Boolean)
+  const hit = (n: LayerNode) =>
+    parts.some((p) => p === '*' || p === n.tag || (p.startsWith('.') && n.classes.includes(p.slice(1))))
+  const out: LayerNode[] = []
+  const walk = (nodes: LayerNode[]) => {
+    for (const n of nodes) {
+      if (hit(n)) out.push(n)
+      walk(n.children)
+    }
+  }
+  walk(tree)
+  return out
+}
+
+/** How many elements a selector matches — the `×N` beside a Layers rule row. */
+export function countMatching(tree: LayerNode[], selector: string): number {
+  return matchingElements(tree, selector).length
+}
+
+// ---- text geometry --------------------------------------------------------
+
+const lineStart = (source: string, at: number) => source.lastIndexOf('\n', at - 1) + 1
+const indentAt = (source: string, at: number) => /^[ \t]*/.exec(source.slice(lineStart(source, at)))![0]
+
+/**
+ * Move every line but the first by `delta` columns — the first line keeps whatever
+ * indentation it lands in. ponytail: counts characters, so a tab-indented file shifts by
+ * spaces; switch to a tab-aware width if anyone ever indents this project with tabs.
+ */
+function shiftIndent(text: string, delta: number): string {
+  if (!delta) return text
+  return text
+    .split('\n')
+    .map((line, i) => {
+      if (i === 0 || !line.trim()) return line
+      if (delta > 0) return ' '.repeat(delta) + line
+      return line.slice(Math.min(-delta, /^[ \t]*/.exec(line)![0].length))
+    })
+    .join('\n')
+}
+
+/** The range to cut when removing an element: its own line, when nothing else shares it. */
+function ownLine(source: string, loc: Loc): Loc {
+  const from = lineStart(source, loc.start)
+  const nl = source.indexOf('\n', loc.end)
+  const to = nl < 0 ? source.length : nl + 1
+  const alone = !source.slice(from, loc.start).trim() && !source.slice(loc.end, to).trim()
+  return alone ? { start: from, end: to } : loc
+}
+
+/** Offset just past the element's `>`; where its content begins. */
+function innerStart(source: string, el: ElementInfo): number {
+  const from = el.props.length ? el.props[el.props.length - 1].loc.end : el.nameLoc.end
+  const gt = source.indexOf('>', from)
+  return gt < 0 ? el.loc.end : gt + 1
+}
+
+/** Offset of the element's `</tag>`, or null when there is nothing to close (void, self-closing). */
+function closeTagStart(source: string, el: ElementInfo): number | null {
+  if (el.selfClosing || VOID_TAGS.has(el.tag) || !el.wellFormed) return null
+  const m = new RegExp(`</\\s*${el.tag}\\s*>$`, 'i').exec(source.slice(el.loc.start, el.loc.end))
+  return m ? el.loc.start + m.index : null
+}
+
+/** Where `insert`'s text starts once every edit before it has been applied. */
+function landsAt(edits: Edit[], insert: Edit, within = 0): number {
+  let delta = 0
+  for (const e of edits) if (e !== insert && e.end <= insert.start) delta += e.text.length - (e.end - e.start)
+  return insert.start + delta + within
+}
+
+/** Put `body` on its own line as the last child, just before `close` (the `</tag>` offset). */
+function lastChildEdit(source: string, close: number, indent: string, body: string): { edit: Edit; within: number } {
+  const from = lineStart(source, close)
+  if (!source.slice(from, close).trim()) // the close tag already has a line to itself
+    return { edit: { start: from, end: from, text: `${indent}${body}\n` }, within: indent.length }
+  const outer = indentAt(source, close) // a one-liner: break the close tag onto its own line
+  return { edit: { start: close, end: close, text: `\n${indent}${body}\n${outer}` }, within: 1 + indent.length }
+}
+
+/** The element's source, re-indented for a line that starts at `indent`. */
+function bodyAt(source: string, el: ElementInfo, indent: string): string {
+  return shiftIndent(source.slice(el.loc.start, el.loc.end), indent.length - indentAt(source, el.loc.start).length)
+}
+
+// ---- commands -------------------------------------------------------------
+
+/** Swap with the previous/next sibling. The whitespace between them stays where it is. */
+export function moveElement(source: string, el: ElementInfo, dir: 'up' | 'down'): StructureEdit {
+  if (!editable(source, el)) return NONE
+  const sibs = siblingsOf(source, el)
+  const i = sibs.findIndex((s) => s.start === el.loc.start)
+  const other = i < 0 ? undefined : sibs[dir === 'up' ? i - 1 : i + 1]
+  if (!other) return NONE
+  const [a, b] = dir === 'up' ? [other, el.loc] : [el.loc, other]
+  const ta = source.slice(a.start, a.end)
+  const tb = source.slice(b.start, b.end)
+  // `a` ends up after the untouched gap, which is why `down` is not simply `b.start`.
+  const selectAt = dir === 'up' ? a.start : a.start + tb.length + (b.start - a.end)
+  return done([{ ...a, text: tb }, { ...b, text: ta }], selectAt)
+}
+
+/** Nest into the previous sibling, as its last child. No previous sibling, or a void one → no-op. */
+export function indentElement(source: string, el: ElementInfo): StructureEdit {
+  if (!editable(source, el)) return NONE
+  const sibs = siblingsOf(source, el)
+  const i = sibs.findIndex((s) => s.start === el.loc.start)
+  const prev = i > 0 ? elementAt(source, sibs[i - 1].start + 1) : null
+  const close = prev && closeTagStart(source, prev)
+  if (!prev || close === null) return NONE
+  const indent = indentAt(source, prev.loc.start) + '  '
+  const { edit, within } = lastChildEdit(source, close, indent, bodyAt(source, el, indent))
+  const cut = { ...ownLine(source, el.loc), text: '' }
+  return done([edit, cut], landsAt([edit, cut], edit, within))
+}
+
+/** The inverse: out of the parent, onto the line after its closing tag. */
+export function outdentElement(source: string, el: ElementInfo): StructureEdit {
+  if (!editable(source, el)) return NONE
+  const parent = parentOf(source, el)
+  if (!parent) return NONE // already a direct child of the block
+  const indent = indentAt(source, parent.loc.start)
+  const edit = { start: parent.loc.end, end: parent.loc.end, text: `\n${indent}${bodyAt(source, el, indent)}` }
+  const cut = { ...ownLine(source, el.loc), text: '' }
+  return done([edit, cut], landsAt([edit, cut], edit, 1 + indent.length))
+}
+
+/** `<tag>` … `</tag>` around the element. `tagOrStub` may carry attributes (`Frame pad="2mm"`). */
+export function wrapElement(source: string, el: ElementInfo, tagOrStub: string): StructureEdit {
+  if (!editable(source, el)) return NONE
+  const stub = tagOrStub.trim().replace(/^<|\/?>$/g, '').trim()
+  const name = stub.split(/[\s/>]/)[0]
+  if (!name) return NONE
+  const indent = indentAt(source, el.loc.start)
+  const body = shiftIndent(source.slice(el.loc.start, el.loc.end), 2)
+  return done([{ ...el.loc, text: `<${stub}>\n${indent}  ${body}\n${indent}</${name}>` }], el.loc.start)
+}
+
+/** Replace the element by its content, one level less indented. Empty content = delete. */
+export function unwrapElement(source: string, el: ElementInfo): StructureEdit {
+  if (!editable(source, el)) return NONE
+  const close = closeTagStart(source, el)
+  if (close === null) return NONE
+  const body = shiftIndent(source.slice(innerStart(source, el), close), -2)
+    .replace(/^[ \t]*\n/, '') // the break after the open tag
+    .replace(/\s+$/, '')
+    .replace(/^[ \t]+/, '') // the first line inherits the element's own indentation
+  if (!body) return done([{ ...ownLine(source, el.loc), text: '' }], null)
+  return done([{ ...el.loc, text: body }], el.loc.start)
+}
+
+/** A copy on the next line. */
+export function duplicateElement(source: string, el: ElementInfo): StructureEdit {
+  if (!editable(source, el)) return NONE
+  const indent = indentAt(source, el.loc.start)
+  const text = `\n${indent}${source.slice(el.loc.start, el.loc.end)}`
+  return done([{ start: el.loc.end, end: el.loc.end, text }], el.loc.end + 1 + indent.length)
+}
+
+/** Remove the element, and its line with it when the line becomes blank. */
+export function deleteElement(source: string, el: ElementInfo): StructureEdit {
+  if (!editable(source, el)) return NONE
+  const cut = ownLine(source, el.loc)
+  return done([{ ...cut, text: '' }], cut.start)
+}
+
+/**
+ * Rename open and close tag. Props and children are untouched — except across the void
+ * boundary, where `<br />` grows a body and `<div>x</div>` loses one.
+ */
+export function changeTag(source: string, el: ElementInfo, tag: string): StructureEdit {
+  if (!editable(source, el) || !tag.trim() || tag === el.tag) return NONE
+  const close = closeTagStart(source, el)
+  const attrs = source.slice(el.nameLoc.end, close === null ? el.loc.end : innerStart(source, el))
+    .replace(/\/?>$/, '')
+    .trimEnd()
+  if (VOID_TAGS.has(tag)) return done([{ ...el.loc, text: `<${tag}${attrs} />` }], el.loc.start)
+  if (close === null) return done([{ ...el.loc, text: `<${tag}${attrs}></${tag}>` }], el.loc.start)
+  const closeName = source.slice(close, el.loc.end).indexOf(el.tag)
+  return done(
+    [
+      { ...el.nameLoc, text: tag },
+      { start: close + closeName, end: close + closeName + el.tag.length, text: tag },
+    ],
+    el.loc.start,
+  )
+}
+
+/** Replace the element's own text (only elements that have `text` — see `ElementInfo.text`). */
+export function setText(source: string, el: ElementInfo, text: string): StructureEdit {
+  if (!editable(source, el) || !el.text) return NONE
+  return done([{ start: el.text.start, end: el.text.end, text }], el.loc.start)
+}
+
+/**
+ * Drag & drop from the Layers tree: cut the element and paste it beside (or inside) `target`.
+ * A target inside the element itself, or a void one asked to take a child, is a no-op.
+ */
+export function reparentElement(
+  source: string,
+  el: ElementInfo,
+  target: Loc,
+  position: 'before' | 'after' | 'inside',
+): StructureEdit {
+  if (!editable(source, el)) return NONE
+  if (target.start >= el.loc.start && target.end <= el.loc.end) return NONE // itself, or its own descendant
+  const to = elementAt(source, target.start + 1)
+  if (!to || to.loc.start !== target.start) return NONE
+  const cut = { ...ownLine(source, el.loc), text: '' }
+
+  let edit: Edit, within: number
+  if (position === 'inside') {
+    const close = closeTagStart(source, to)
+    if (close === null) return NONE
+    const indent = indentAt(source, to.loc.start) + '  '
+    ;({ edit, within } = lastChildEdit(source, close, indent, bodyAt(source, el, indent)))
+  } else {
+    const indent = indentAt(source, to.loc.start)
+    const body = bodyAt(source, el, indent)
+    edit =
+      position === 'before'
+        ? { start: to.loc.start, end: to.loc.start, text: `${body}\n${indent}` }
+        : { start: to.loc.end, end: to.loc.end, text: `\n${indent}${body}` }
+    within = position === 'before' ? 0 : 1 + indent.length
+  }
+  if (edit.start > cut.start && edit.start < cut.end) return NONE // the paste lands in the hole it cuts
+  return done([edit, cut], landsAt([edit, cut], edit, within))
+}
+
+/**
+ * Insert `text` (with `|` marking the caret) on its own line after `after` — or as its last
+ * child with `position: 'inside'` (⌥Enter) — or, with no anchor, as the last thing in the block
+ * that spans `blockLoc`. Indentation follows the anchor / block content.
+ */
+export function insertElementText(
+  source: string,
+  text: string,
+  after: Loc | null,
+  blockLoc: Loc,
+  position: 'after' | 'inside' = 'after',
+): StructureEdit {
+  const lineStart = (at: number) => source.lastIndexOf('\n', at - 1) + 1
+  if (position === 'inside' && after) {
+    const to = elementAt(source, after.start + 1)
+    const close = to ? closeTagStart(source, to) : null
+    if (to && close !== null) {
+      const inner = indentAt(source, to.loc.start) + '  '
+      const body = text.replaceAll('\n', '\n' + inner)
+      const at = body.indexOf('|')
+      const clean = body.replace('|', '')
+      const { edit, within } = lastChildEdit(source, close, inner, clean)
+      return { edits: [edit], selectAt: edit.start + within + (at < 0 ? 0 : Math.min(at, clean.length)) }
+    }
+  }
+  let at: number, indent: string
+  if (after) {
+    at = after.end
+    const ls = lineStart(after.start)
+    indent = source.slice(ls, after.start).match(/^[ \t]*/)![0]
+  } else {
+    // Before the block's closing tag; indent like the last content line, else two spaces.
+    const closeAt = source.lastIndexOf('</', blockLoc.end)
+    at = source.lastIndexOf('\n', closeAt - 1) // end of the last content line
+    if (at < blockLoc.start) at = closeAt
+    const lastLine = source.slice(lineStart(at), at)
+    indent = lastLine.trim() ? lastLine.match(/^[ \t]*/)![0] : '  '
+  }
+  const body = text.replaceAll('\n', '\n' + indent)
+  const caret = body.indexOf('|')
+  const clean = body.replace('|', '')
+  const inserted = `\n${indent}${clean}`
+  return { edits: [{ start: at, end: at, text: inserted }], selectAt: at + 1 + indent.length + (caret < 0 ? 0 : Math.min(caret, clean.length)) }
 }

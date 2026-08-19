@@ -84,6 +84,24 @@ test('inspector adds data-loc with offsets into the file', async () => {
   expect(html.match(/data-loc/g)).toHaveLength(2) // both elements
 })
 
+test('inspector reaches into snippets: own data-loc, call site as data-inst', async () => {
+  const source = '<snippet name="badge"><span>x</span></snippet>\n<template><badge /></template>'
+  const compiled = compileTemplate(source, { inspector: true })
+  const { html } = await render(compiled, {})
+  const own = /data-loc="(\d+):(\d+)"/.exec(html)!
+  expect(source.slice(+own[1], +own[2])).toBe('<span>x</span>')
+  const inst = /data-inst="(\d+):(\d+)"/.exec(html)!
+  expect(source.slice(+inst[1], +inst[2])).toBe('<badge />')
+})
+
+test('inspector data-loc stays file-absolute with a <script setup> in the block', async () => {
+  const source = '<script setup>\nconst a = 1\n</script>\n<template><div>{{ a }}</div></template>'
+  const compiled = compileTemplate(source, { inspector: true })
+  const { html } = await render(compiled, {})
+  const [, start, end] = /data-loc="(\d+):(\d+)"/.exec(html)!
+  expect(source.slice(+start, +end)).toBe('<div>{{ a }}</div>')
+})
+
 test('asset: URLs become data URLs in html and css, unknown ones warn', async () => {
   const compiled = compileTemplate(`
 <template><Img src="asset:logo.svg" /></template>

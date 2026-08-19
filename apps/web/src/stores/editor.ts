@@ -2,12 +2,18 @@ import { computed, nextTick, reactive, shallowRef, toRaw, watch } from 'vue'
 import { parseMeta } from '@sprint/core/template/meta.ts'
 import { labelDocument } from '@sprint/core/template/label.ts'
 import { RenderSuperseded } from '@sprint/editor/runtime-client.ts'
-import { attributeEdit, elementAt } from '@sprint/editor/ast.ts'
+import {
+  attributeEdit, changeTag, countMatching, deleteElement, duplicateElement, elementAt, elementTree,
+  indentElement, matchingElements, moveElement, outdentElement, reparentElement, setText,
+  unwrapElement, wrapElement, insertElementText,
+} from '@sprint/editor/ast.ts'
 import { blockOf, insertBlock, tabAt, tabKey, tabsModel, type TabBlock } from '@sprint/editor/tabs.ts'
-import { findRule, rulesIn, type Rule } from '@sprint/editor/css.ts'
+import { findRule, ruleAt, rulesIn, setDeclaration, type Rule, type StyleTarget } from '@sprint/editor/css.ts'
+import { buildTree, type VarNode } from '@sprint/editor/inspector/row-tree.ts'
 import type { BlockKind, TabRef } from '@sprint/editor/tabs.ts'
-import type { Edit } from '@sprint/editor/ast.ts'
+import type { Edit, ElementInfo, LayerNode, Loc, StructureEdit } from '@sprint/editor/ast.ts'
 import type { EditorHandle } from '@sprint/editor/editor-handle.ts'
+import { LIBRARY_NAMES } from '@sprint/core'
 import type { Assets, ComponentSchema, Message, Meta, RenderedLabel } from '@sprint/core'
 import { runtime } from '../runtime-client'
 import { data, previewRow } from './data'
@@ -57,12 +63,9 @@ export const previewDocument = computed(() =>
 export const errorCount = computed(() => editor.messages.filter((m) => m.kind !== 'purity').length)
 export const warningCount = computed(() => editor.messages.filter((m) => m.kind === 'purity').length)
 
-/** Design §3.7: which of the four preview states we are in. */
-export const previewState = computed<'ok' | 'error' | 'no-data' | 'no-row'>(() =>
-  errorCount.value ? 'error'
-    : !data.rows.length ? 'no-data'
-      : !data.selected.size ? 'no-row'
-        : 'ok',
+/** SPEC §3 E10 · E11: what the canvas is showing. Which rows are *selected* is print's business. */
+export const previewState = computed<'ok' | 'error' | 'no-data'>(() =>
+  errorCount.value ? 'error' : !data.rows.length ? 'no-data' : 'ok',
 )
 
 // ---------------------------------------------------------------- templates
@@ -82,8 +85,10 @@ export function load(id: string) {
   editor.savedSource = record.source
   editor.assets = record.assets
   editor.savedAt = record.updatedAt || null
-  // A different file has different blocks: start on its template, forget the old carets.
-  editor.activeTab = { scope: null, kind: 'template' }
+  // A different file has different blocks: pick up where this one was left, forget the old
+  // carets. A remembered scope/block that no longer exists falls back to the file's template.
+  const remembered = settings.tabByTemplate[id]
+  editor.activeTab = remembered && blockOf(tabsModel(record.source), remembered) ? { ...remembered } : { scope: null, kind: 'template' }
   editor.caretByTab = {}
   settings.lastTemplateId = id
   render()
@@ -144,8 +149,17 @@ watch(() => [editor.source, previewRow.value] as const, scheduleRender)
 
 // ---------------------------------------------------------------- caret
 
-/** The element the caret sits in: the property editor's target, the components pane's ring. */
-export const element = computed(() => elementAt(editor.source, editor.caret))
+/**
+ * The element the caret sits in: the Inspector's target, the Layers ring, the canvas outline.
+ * `elementAt` falls back to the block's own `<template>` / `<snippet>` wrapper when the caret
+ * sits in empty template space — that is not a selectable element (E9 wants `nothing selected`),
+ * and it starts before the block's content does, which is how we tell.
+ */
+export const element = computed(() => {
+  const el = elementAt(editor.source, editor.caret)
+  const block = scopeTemplate.value
+  return el && block && el.loc.start < block.contentStart ? null : el
+})
 const norm = (name: string) => name.replace(/-/g, '').toLowerCase()
 export const elementSchema = computed(
   () => editor.components.find((c) => element.value && norm(c.name) === norm(element.value.tag)) ?? null,
@@ -326,8 +340,7 @@ export function ruleFor(cls: string) {
   return null
 }
 
-/** One thing the element's styling comes from: a global, element, class or id rule — in cascade order. */
-export type StyleTarget = { kind: 'global' | 'tag' | 'class' | 'id'; selector: string; label: string; rule: Rule | null }
+export type { StyleTarget }
 
 /** All rules that apply to the element at the caret (simple selectors, comma lists), lowest specificity first. */
 export const styleTargets = computed<StyleTarget[]>(() => {
@@ -459,6 +472,137 @@ export function removeClassFromElement(cls: string) {
   applyEdits([attributeEdit(el, 'class', rest.length ? 'set-static' : 'remove', rest.join(' '))])
 }
 
+// ---------------------------------------------------------------- structure (plan §2)
+
+/**
+ * Run one structure primitive and follow the element: `applyEdits` is one undo step, and the
+ * caret lands on the moved tag so the property editor, the preview outline and the Layers
+ * selection all stay on the same element. `loc` picks the element (a Layers row); `null` = the
+ * caret's.
+ */
+function run(loc: Loc | null, fn: (source: string, el: ElementInfo) => StructureEdit) {
+  // `start + 1`: at the `<` itself a preceding sibling that ends there would match first.
+  const el = loc ? elementAt(editor.source, loc.start + 1) : element.value
+  if (!el) return
+  const { edits, selectAt } = fn(editor.source, el)
+  if (!edits.length) return
+  applyEdits(edits)
+  if (selectAt != null) void nextTick(() => goToOffset(selectAt))
+}
+
+export const moveSelected = (dir: 'up' | 'down') => run(null, (s, el) => moveElement(s, el, dir))
+export const indentSelected = () => run(null, indentElement)
+export const outdentSelected = () => run(null, outdentElement)
+export const wrapSelected = (tag: string) => run(null, (s, el) => wrapElement(s, el, tag))
+export const unwrapSelected = () => run(null, unwrapElement)
+export const duplicateSelected = () => run(null, duplicateElement)
+export const deleteSelected = () => run(null, deleteElement)
+export const changeSelectedTag = (tag: string) => run(null, (s, el) => changeTag(s, el, tag))
+export const setSelectedText = (text: string) => run(null, (s, el) => setText(s, el, text))
+
+/** A Layers row: select it (caret at the tag's start — the same as clicking it in the preview). */
+export const selectElement = (loc: Loc) => goToOffset(loc.start)
+
+/** A Layers drag: move any element next to / into any other, not just the caret's. */
+export const reparent = (loc: Loc, target: Loc, position: 'before' | 'after' | 'inside') =>
+  run(loc, (s, el) => reparentElement(s, el, target, position))
+
+/** The Layers `⋯` commands — they act on *that* row, which need not be the caret's element. */
+const COMMANDS: Record<string, (source: string, el: ElementInfo) => StructureEdit> = {
+  up: (s, el) => moveElement(s, el, 'up'),
+  down: (s, el) => moveElement(s, el, 'down'),
+  indent: indentElement,
+  outdent: outdentElement,
+  unwrap: unwrapElement,
+  duplicate: duplicateElement,
+  delete: deleteElement,
+}
+
+/** Layers `+`: put `text` (from the insert popup, `|` = caret) after / inside `after`, or at the end of the active block. */
+export function insertText(text: string, after: Loc | null, position: 'after' | 'inside' = 'after') {
+  const b = scopeTemplate.value
+  if (!b) return
+  const { edits, selectAt } = insertElementText(editor.source, text, after, { start: b.start, end: b.end }, position)
+  applyEdits(edits)
+  void nextTick(() => selectAt != null && goToOffset(selectAt))
+}
+
+/** `up` … `delete`, plus `wrap:<tag>` — the tag comes from the menu's `Wrap in…` list. */
+export function runOnElement(loc: Loc, command: string) {
+  const tag = command.startsWith('wrap:') ? command.slice('wrap:'.length) : null
+  if (tag) return run(loc, (s, el) => wrapElement(s, el, tag))
+  const fn = COMMANDS[command]
+  if (fn) run(loc, fn)
+}
+
+/**
+ * Which commands would do anything to the caret's element — the toolbar's disabled states.
+ * Asking the primitive ("would this produce edits?") is one line and can never drift from what
+ * the button then does; only `unwrap` needs its own test, because unwrapping an empty element
+ * *is* a valid edit (it deletes it) and that is not what the button means.
+ */
+function capabilities(el: ElementInfo | null) {
+  const s = editor.source
+  const ok = (r: StructureEdit) => r.edits.length > 0
+  return el
+    ? {
+        up: ok(moveElement(s, el, 'up')),
+        down: ok(moveElement(s, el, 'down')),
+        indent: ok(indentElement(s, el)),
+        outdent: ok(outdentElement(s, el)),
+        // `text` is present-but-empty for `<div></div>`: there is nothing to unwrap it into.
+        unwrap: el.children.length > 0 || !!el.text?.value,
+        duplicate: ok(duplicateElement(s, el)),
+      }
+    : { up: false, down: false, indent: false, outdent: false, unwrap: false, duplicate: false }
+}
+
+export const can = computed(() => capabilities(element.value))
+
+/** The same, for any Layers row — the `⋯` menu's disabled items. `start + 1`: see `run`. */
+export const canFor = (loc: Loc) => capabilities(elementAt(editor.source, loc.start + 1))
+
+/** What `Wrap ▾` offers on top of its own div/span/p: the library, then this file's snippets. */
+export const wrapChoices = computed(() => [...LIBRARY_NAMES, ...tabs.value.snippets.map((s) => s.name)])
+
+/**
+ * The template block of the scope we are in — what Layers shows on *every* block tab
+ * (SPEC §4.2), not only while the template tab is the active one.
+ */
+const scopeTemplate = computed(() => blockOf(tabs.value, { scope: editor.activeTab.scope, kind: 'template' }))
+
+export const layers = computed<LayerNode[]>(() =>
+  scopeTemplate.value ? elementTree(editor.source, scopeTemplate.value) : [],
+)
+
+/** `N elements` — the tab strip already counts them for the same block. */
+export const layerCount = computed(() => scopeTemplate.value?.count ?? 0)
+
+/** Layers RULES: the scope's own style block, each rule with how many elements it matches. */
+export const scopeRules = computed(() => {
+  const block = blockOf(tabs.value, { scope: editor.activeTab.scope, kind: 'style' })
+  if (!block) return []
+  return rulesIn(editor.source, block.start, block.end)
+    .map((rule) => ({ rule, selector: rule.selector, start: rule.start, uses: countMatching(layers.value, rule.selector) }))
+})
+
+/** The rule the caret sits in while a style block is active — the ringed RULES row. */
+export const ruleAtCaret = computed(() =>
+  editor.activeTab.kind === 'style' ? ruleAt(editor.source, editor.caret) : null,
+)
+
+/** Layers SCRIPT: a snippet's props (from the compiler) and the block's size. Null = no script block. */
+export const scriptInfo = computed(() => {
+  const scope = editor.activeTab.scope
+  const block = blockOf(tabs.value, { scope, kind: 'script' })
+  if (!block) return null
+  const schema = scope === null ? null : editor.components.find((c) => c.name === scope)
+  return {
+    props: (schema?.props ?? []).map((p) => ({ name: p.name, type: `${p.type}${p.required ? '' : '?'}` })),
+    lines: block.lines.last - block.lines.first + 1,
+  }
+})
+
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 /**
@@ -497,6 +641,170 @@ export function promoteSnippet(name: string) {
   if (body) download(`${name}.vue`, body[1].trim())
 }
 
+// ---------------------------------------------------------------- Inspector (SPEC §4.3 · §4.4)
+
+/**
+ * PROPS: the scope's declared props with the value the current caller passes in.
+ * ponytail: the compiler does not report call sites (SPEC §9.3), so the callers are found with
+ * a regex over the source — `<temp label="Nozzle" …>`. Swap it for real call-site information
+ * when the compiler grows it; the shape here is already what the pane wants.
+ */
+export const scopeProps = computed(() => {
+  const scope = editor.activeTab.scope
+  if (scope === null) return null
+  const schema = editor.components.find((c) => c.name === scope)
+  const calls = [...editor.source.matchAll(new RegExp(`<${escapeRe(scope)}(\\s[^>]*?)?/?>`, 'g'))].map((m) => m[1] ?? '')
+  const passed = (name: string) => {
+    const m = new RegExp(`(:?)${escapeRe(name)}="([^"]*)"`).exec(calls[0] ?? '')
+    return m ? (m[1] ? m[2] : `"${m[2]}"`) : null
+  }
+  return (schema?.props ?? []).map((p) => ({
+    name: p.name,
+    type: `${p.type}${p.required ? '' : '?'}`,
+    value: passed(p.name),
+    callers: calls.length,
+  }))
+})
+
+/** What the Inspector's `{ }` picker offers: flat `row.*` leaves, or — in a scope — its props. */
+export const variables = computed<{ path: string; hint: string }[]>(() => {
+  if (editor.activeTab.scope !== null)
+    return (scopeProps.value ?? []).map((p) => ({ path: p.name, hint: p.type }))
+  const out: { path: string; hint: string }[] = []
+  const walk = (nodes: VarNode[]) => {
+    for (const n of nodes) if (n.kind === 'leaf') out.push({ path: n.path, hint: n.value }); else walk(n.children)
+  }
+  walk(buildTree(data.rowType, previewRow.value))
+  return out
+})
+
+/**
+ * `+ prop`: one text edit wherever the snippet already declares its props — the `props="…"`
+ * attribute of a shorthand snippet, or the `defineProps<{ … }>()` type literal of its script.
+ * A full snippet without a script needs the block first, which is the one two-edit case.
+ */
+export function addProp(name: string) {
+  const scope = editor.activeTab.scope
+  const clean = name.trim().replace(/[^\w-]/g, '')
+  const snippet = tabs.value.snippets.find((s) => s.name === scope)
+  if (!snippet || !clean || scope === null) return
+  const source = editor.source
+
+  if (snippet.shorthand) {
+    const open = source.indexOf('>', snippet.start)
+    const head = source.slice(snippet.start, open)
+    const attr = /props="([^"]*)"/.exec(head)
+    if (!attr) return applyEdits([{ start: open, end: open, text: ` props="${clean}"` }])
+    const at = snippet.start + attr.index + 'props="'.length + attr[1].length
+    return applyEdits([{ start: at, end: at, text: `${attr[1].trim() ? ' ' : ''}${clean}` }])
+  }
+
+  let script = snippet.blocks.find((b) => b.kind === 'script')
+  if (!script) {
+    applyEdits([insertBlock(source, tabs.value, 'script', undefined, scope)])
+    script = blockOf(tabsModel(editor.source), { scope, kind: 'script' })
+    if (!script) return
+  }
+  const text = editor.source.slice(script.contentStart, script.contentEnd)
+  const from = text.indexOf('defineProps<{')
+  const close = from < 0 ? -1 : text.indexOf('}>', from)
+  if (close < 0) {
+    const at = script.contentStart
+    return applyEdits([{ start: at, end: at, text: `\ndefineProps<{ ${clean}: string }>()\n` }])
+  }
+  const inner = text.slice(from + 'defineProps<{'.length, close)
+  const indent = /\n([ \t]*)\S/.exec(inner)?.[1] ?? '  '
+  let at = script.contentStart + close
+  while (/\s/.test(editor.source[at - 1])) at-- // land after the last member, not on the brace
+  applyEdits([{ start: at, end: at, text: inner.includes('\n') ? `\n${indent}${clean}: string` : `; ${clean}: string` }])
+}
+
+/** Rule mode: the elements the rule at the caret matches — `USED BY`, and (phase 5) the outlines. */
+export const ruleUsage = computed(() =>
+  ruleAtCaret.value ? matchingElements(layers.value, ruleAtCaret.value.selector) : [],
+)
+export const matchedLocs = computed<Loc[]>(() => ruleUsage.value.map((n) => n.loc))
+
+// ---------------------------------------------------------------- the canvas (SPEC §4.5)
+
+/**
+ * The snippet block we are scoped to — what the canvas keeps at full strength while
+ * everything else drops to 32%. `null` in the label scope: nothing is out of scope there.
+ */
+export const scopeRange = computed<Loc | null>(() => {
+  const s = tabs.value.snippets.find((x) => x.name === editor.activeTab.scope)
+  return s ? { start: s.start, end: s.end } : null
+})
+
+/** Selecting across scopes is impossible (SPEC §6), so only ranges in this scope's template count. */
+const inScope = (loc: Loc) => {
+  const b = scopeTemplate.value
+  return !!b && loc.start >= b.start && loc.end <= b.end
+}
+
+/**
+ * A canvas click sends the whole ancestor chain (innermost first, a snippet's root carrying
+ * both its own range and its call site's): the first range that belongs to this scope is the
+ * element the click means. In the label scope that is the `<badge …>` call, inside the badge
+ * scope it is the element the snippet itself declares.
+ */
+const pickLoc = (locs: Loc[]) => locs.find(inScope) ?? null
+
+export function canvasSelect(locs: Loc[]) {
+  const loc = pickLoc(locs)
+  if (loc) goToOffset(loc.start, loc.end)
+}
+
+/** Double-click a snippet instance and you are in its scope; anything else just selects. */
+export function canvasEnterScope(locs: Loc[]) {
+  const loc = pickLoc(locs)
+  const el = loc && elementAt(editor.source, loc.start + 1)
+  if (el && tabs.value.snippets.some((s) => s.name === el.tag)) enterScope(el.tag)
+  else canvasSelect(locs)
+}
+
+/** A canvas drag: the same primitive a Layers drag runs, so it is one text edit and one ⌘Z. */
+export function canvasReorder(e: { locs: Loc[]; target: Loc[]; position: 'before' | 'after' | 'inside' }) {
+  const loc = pickLoc(e.locs), target = pickLoc(e.target)
+  if (loc && target && loc.start !== target.start) reparent(loc, target, e.position)
+}
+
+/** Whether a handle drag has a rule to write into — the element's own class (SPEC §4.5). */
+export const classTarget = computed(() => [...styleTargets.value].reverse().find((t) => t.kind === 'class') ?? null)
+
+/**
+ * A handle drag writes `width` (and `height`) into that class rule as **one** edit batch.
+ * Two appends land on the same offset, so they are merged into one edit — Monaco never sees
+ * two identical ranges, and ⌘Z takes the whole resize back.
+ */
+export function canvasResize({ width, height }: { width: number; height: number | null }) {
+  const target = classTarget.value
+  if (!target) return
+  const at = target.rule ? target.rule.bodyStart + 1 : ensureSelector(target.selector)
+  const rule = ruleAt(editor.source, at)
+  if (!rule) return
+  const props: [string, string][] = [['width', `${width}mm`]]
+  if (height != null) props.push(['height', `${height}mm`])
+  const edits = props.reduce<Edit[]>((acc, [prop, value]) => {
+    const e = setDeclaration(editor.source, rule, prop, value)
+    const same = acc.find((a) => a.start === e.start && a.end === e.end)
+    if (same) same.text += e.text
+    else acc.push({ ...e })
+    return acc
+  }, [])
+  applyEdits(edits)
+}
+
+/**
+ * A style change on a selector pill that has no rule yet: create the rule, then set the
+ * declaration. Two edits (two ⌘Z) — the second one needs the offsets the first one produced.
+ */
+export function declare({ selector, prop, value }: { selector: string; prop: string; value: string | null }) {
+  const at = ensureSelector(selector) // creates the rule — `editor.source` only has it after this
+  const rule = ruleAt(editor.source, at)
+  if (rule) applyEdits([setDeclaration(editor.source, rule, prop, value)])
+}
+
 /**
  * `Label setup…` writes back into the `<meta>` JSON as one text-range edit, so ⌘Z undoes it
  * like any other edit and the file stays the source of truth (README-tabs §6).
@@ -510,6 +818,11 @@ export function writeMeta(patch: Omit<Partial<Meta>, 'size'> & { size?: Partial<
       : { start: 0, end: 0, text: `<meta>\n${JSON.stringify(next)}\n</meta>\n\n` },
   ])
 }
+
+/** SPEC §6: scope per template, block per scope — remembered across sessions. */
+watch(() => editor.activeTab, (tab) => {
+  if (editor.templateId) settings.tabByTemplate[editor.templateId] = { ...tab }
+}, { deep: true })
 
 // A deleted block must not leave the strip pointing at nothing (README-tabs §7).
 watch(tabs, (model) => {

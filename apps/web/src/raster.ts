@@ -41,8 +41,8 @@ export async function rasterize(label: RenderedLabel, size: Meta['size'], profil
   return ctx.getImageData(0, 0, w, h)
 }
 
-/** `data-loc` only exists so preview clicks find their source; it must never reach paper. */
-export const stripDataLoc = (html: string) => html.replace(/ data-loc="[^"]*"/g, '')
+/** `data-loc` / `data-inst` only exist so canvas clicks find their source; never on paper. */
+export const stripDataLoc = (html: string) => html.replace(/ data-(loc|inst)="[^"]*"/g, '')
 
 /**
  * The same 1-bit bitmap the printer burns, as a PNG data URL for the preview's Raster view.

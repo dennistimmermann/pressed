@@ -1,10 +1,7 @@
 <script setup lang="ts">
-import { editor as monacoEditor, type IRange, Range, Uri } from 'monaco-editor-core'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useTemplateRef, watch } from 'vue'
+import { editor as monacoEditor, type IRange, MarkerSeverity, Range, Uri } from 'monaco-editor-core'
+import { computed, nextTick, onBeforeUnmount, onMounted, shallowRef, useTemplateRef, watch } from 'vue'
 import type { EditorHandle } from './editor-handle'
-import { attributeEdit, cursorContext, elementAt } from './ast'
-import { insertItems, type InsertItem } from './inspector/insert'
-import type { ComponentSchema } from './types'
 import { getOrCreateModel, startLanguageService } from './monaco/env'
 import { componentUri, ENV_URI, SPRINT_MODULE_URI, sprintEnv } from './monaco/sprint-env'
 import { defineSprintTheme } from './monaco/theme'
@@ -12,9 +9,9 @@ import { defineSprintTheme } from './monaco/theme'
 /**
  * The Monaco + Volar editor pane (design §3.3).
  *
- * Everything that edits the text from outside — the property editor, the component and
- * variable panes — goes through the `EditorHandle` this exposes, so there is exactly one
- * undo stack and one caret (spec §9c).
+ * Everything that edits the text from outside — Layers, the Inspector — goes through the
+ * `EditorHandle` this exposes, so there is exactly one undo stack and one caret (spec §9c).
+ * Inserting is typing (`<`, `{{`) plus the Volar completion; there are no buttons in here.
  */
 const props = withDefaults(
   defineProps<{
@@ -35,14 +32,12 @@ const props = withDefaults(
     /** Centred "Nothing here yet" state over an empty block (README-tabs §7). Backticked words render mono. */
     emptyText?: { title: string; body: string } | null
     /**
-     * Insert popup (the `+` on a blank template line, or typing `<` there): library components and
-     * this file's snippets, on top of plain HTML filtered by the enclosing element. Off when null.
+     * Compile / purity messages as source ranges (SPEC §3 E11): a wavy underline each. The
+     * language service reports its own; these are the ones only the compiler knows about.
      */
-    insertables?: { components: ComponentSchema[]; snippets: ComponentSchema[] } | null
-    /** Variables offered by the `+` in text / interpolations / bound attributes (`row.x` paths, or a snippet's props). */
-    variables?: { path: string; hint: string }[] | null
+    markers?: { start: number; end: number; message: string; severity: 'error' | 'warning' }[]
   }>(),
-  { filename: 'Label.vue', visible: null, emptyText: null, insertables: null, variables: null },
+  { filename: 'Label.vue', visible: null, emptyText: null, markers: () => [] },
 )
 
 const emit = defineEmits<{
@@ -115,108 +110,6 @@ const syncUris = () => [
   Uri.parse(SPRINT_MODULE_URI),
   ...Object.keys(props.libraryComponents).map((name) => Uri.parse(componentUri(name))),
 ]
-
-// ---------------------------------------------------------------- insert popup
-// A `+` follows the caret wherever something can be dropped in: on a blank template line it
-// offers components / snippets / HTML (filtered by the parent element); in text, inside `{{ }}`
-// or in a bound attribute it offers variables. Picking inserts with the caret in the right spot.
-
-type Mode = 'components' | 'variables'
-type Spot = { modes: Mode[]; context: ReturnType<typeof cursorContext> | 'blank' }
-const plus = ref<{ top: number; left: number; modes: Mode[] } | null>(null)
-const popup = ref<{ top: number; left: number; from: number; mode: Mode; context: Spot['context'] } | null>(null)
-const query = ref('')
-const cursor = ref(0)
-
-/** What can be inserted at the caret: components and/or variables, and where the caret sits. */
-function spotAt(ed: monacoEditor.IStandaloneCodeEditor): Spot | null {
-  const pos = ed.getPosition(), model = ed.getModel()
-  if (!pos || !model) return null
-  const offset = model.getOffsetAt(pos)
-  if (model.getLineContent(pos.lineNumber).trim() === '' && props.insertables)
-    return { modes: props.variables ? ['components', 'variables'] : ['components'], context: 'blank' }
-  if (!props.variables) return null
-  // Mid-tag (`<di|`, `<div cla|`): the user is typing a tag; nothing to offer until it closes.
-  if (/<[^>]*$/.test(model.getLineContent(pos.lineNumber).slice(0, pos.column - 1))) return null
-  const context = cursorContext(model.getValue(), offset)
-  if (context === 'text') return { modes: props.insertables ? ['components', 'variables'] : ['variables'], context }
-  if (context === 'interpolation' || context === 'attr-value-binding') return { modes: ['variables'], context }
-  if (context === 'attr-value-static') {
-    // An empty static value can become a binding (`:size="row.x"`); a filled one cannot hold a variable.
-    const el = elementAt(model.getValue(), offset)
-    const prop = el?.props.find((p) => p.valueLoc && offset >= p.valueLoc.start && offset <= p.valueLoc.end)
-    if (prop && !prop.value) return { modes: ['variables'], context }
-  }
-  return null
-}
-
-const items = computed<InsertItem[]>(() => {
-  if (!popup.value) return []
-  const { mode, context, from } = popup.value
-  let all: InsertItem[]
-  if (mode === 'components') {
-    const parent = elementAt(instance.value?.getValue() ?? '', from)
-    all = insertItems(props.insertables!.components, props.insertables!.snippets, parent?.tag ?? null)
-  } else {
-    const bare = context === 'interpolation' || context === 'attr-value-binding' || context === 'attr-value-static'
-    all = (props.variables ?? []).map((v) => ({ name: v.path, kind: 'variable', hint: v.hint, text: bare ? `${v.path}|` : `{{ ${v.path} }}|` }))
-  }
-  const q = query.value.trim().toLowerCase()
-  return q ? all.filter((i) => i.name.toLowerCase().includes(q)) : all
-})
-
-function placePlus() {
-  const ed = instance.value
-  const spot = ed && spotAt(ed)
-  // Right of the caret's line end, so the buttons never sit on top of text.
-  const line = ed?.getPosition()?.lineNumber
-  const vis = spot && line && ed!.getScrolledVisiblePosition({ lineNumber: line, column: ed!.getModel()!.getLineMaxColumn(line) })
-  plus.value = vis && vis.top >= 0 && vis.height ? { top: vis.top, left: vis.left, modes: spot.modes } : null
-}
-function openPopup(mode: Mode) {
-  const ed = instance.value!
-  const spot = spotAt(ed)
-  const pos = ed.getPosition()!
-  const vis = spot && ed.getScrolledVisiblePosition(pos)
-  if (!spot || !vis) return
-  popup.value = { top: vis.top + vis.height + 4, left: vis.left, from: ed.getModel()!.getOffsetAt(pos), mode, context: spot.context }
-  query.value = ''
-  cursor.value = 0
-  void nextTick(() => container.value?.querySelector<HTMLInputElement>('.sprint-insert input')?.focus())
-}
-function closePopup(refocus = true) {
-  popup.value = null
-  if (refocus) instance.value?.focus()
-}
-function pick(item: InsertItem | undefined) {
-  if (!item || !popup.value) return
-  const { from, context } = popup.value
-  const model = instance.value!.getModel()!
-  if (context === 'attr-value-static') {
-    // `size=""` → `:size="row.x"`: one edit on the attribute, caret after it.
-    const el = elementAt(model.getValue(), from)!
-    const prop = el.props.find((p) => p.valueLoc && from >= p.valueLoc.start && from <= p.valueLoc.end)!
-    const edit = attributeEdit(el, prop.name, 'set-binding', item.name)
-    handle.executeEdits([edit])
-    handle.setCaret(edit.start + edit.text.length)
-    return closePopup()
-  }
-  // Multi-line inserts follow the indentation of the line they land on.
-  const pos = model.getPositionAt(from)
-  const indent = model.getLineContent(pos.lineNumber).slice(0, model.getLineFirstNonWhitespaceColumn(pos.lineNumber) - 1 || pos.column - 1)
-  const raw = item.text.replaceAll('\n', '\n' + indent)
-  const caretAt = raw.indexOf('|')
-  const text = raw.replace('|', '')
-  handle.executeEdits([{ start: from, end: from, text }])
-  handle.setCaret(from + (caretAt < 0 ? text.length : caretAt))
-  closePopup()
-}
-function onPopupKey(e: KeyboardEvent) {
-  if (e.key === 'ArrowDown') { cursor.value = Math.min(cursor.value + 1, items.value.length - 1); e.preventDefault() }
-  else if (e.key === 'ArrowUp') { cursor.value = Math.max(cursor.value - 1, 0); e.preventDefault() }
-  else if (e.key === 'Enter') { pick(items.value[cursor.value]); e.preventDefault() }
-  else if (e.key === 'Escape') { closePopup(); e.preventDefault() }
-}
 
 // ---------------------------------------------------------------- lifecycle
 
@@ -360,13 +253,8 @@ onMounted(() => {
       const offset = ed.getModel()!.getOffsetAt(ed.getPosition()!)
       emit('caret', offset)
       for (const cb of caretListeners) cb(offset)
-      placePlus()
-      if (popup.value && offset !== popup.value.from) closePopup(false)
     }),
-    ed.onDidScrollChange(placePlus),
-    ed.onDidLayoutChange(placePlus),
   )
-  watch(() => [props.insertables, props.variables], placePlus)
 
   // One tab = one visible line range; everything else is hidden (README-tabs §1). Line numbers
   // keep counting, which is the cheapest proof that this is still one file.
@@ -379,6 +267,23 @@ onMounted(() => {
   const observer = new MutationObserver(() => monacoEditor.setTheme(defineSprintTheme()))
   observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
   disposables.push({ dispose: () => observer.disconnect() })
+
+  // Wavy underlines for what the compiler found. Our own owner, so Volar's markers stay put.
+  const applyMarkers = () => {
+    const m = ed.getModel()
+    if (!m) return
+    monacoEditor.setModelMarkers(m, 'sprint', props.markers.map((k) => {
+      const a = m.getPositionAt(k.start), b = m.getPositionAt(k.end)
+      return {
+        message: k.message,
+        severity: k.severity === 'warning' ? MarkerSeverity.Warning : MarkerSeverity.Error,
+        startLineNumber: a.lineNumber, startColumn: a.column, endLineNumber: b.lineNumber, endColumn: b.column,
+      }
+    }))
+  }
+  applyMarkers()
+  watch(() => props.markers, applyMarkers, { deep: true })
+  disposables.push(ed.onDidChangeModel(applyMarkers))
 
   emit('ready', handle)
 })
@@ -493,27 +398,6 @@ defineExpose(handle)
         <span v-for="(part, i) in emptyBody" :key="i" :class="{ mono: part.mono, klass: part.klass }">{{ part.text }}</span>
       </p>
     </div>
-
-    <!-- `+ component` / `+ variable` right of the caret, whichever fit here; the popup hangs under them. -->
-    <div v-if="plus && !popup" class="sprint-plus" :style="{ top: `${plus.top}px`, left: `${plus.left}px` }">
-      <button
-        v-for="mode in plus.modes" :key="mode" type="button" @mousedown.prevent @click="openPopup(mode)"
-      >+ {{ mode === 'components' ? 'component' : 'variable' }}</button>
-    </div>
-    <div v-if="popup" class="sprint-insert" :style="{ top: `${popup.top}px`, left: `${popup.left}px` }" @keydown="onPopupKey">
-      <input v-model="query" :placeholder="popup.mode === 'variables' ? 'variable…' : 'component or element…'" @input="cursor = 0">
-      <ul role="listbox">
-        <li
-          v-for="(item, i) in items" :key="item.kind + item.name" role="option" :aria-selected="i === cursor"
-          :class="{ on: i === cursor }" @mouseenter="cursor = i" @mousedown.prevent="pick(item)"
-        >
-          <span class="badge" :class="item.kind">{{ item.kind === 'html' ? '<>' : item.kind === 'snippet' ? 'S' : item.kind === 'variable' ? '{ }' : 'C' }}</span>
-          <span class="name">{{ item.name }}</span>
-          <span class="hint">{{ item.hint }}</span>
-        </li>
-        <li v-if="!items.length" class="none">nothing fits here</li>
-      </ul>
-    </div>
   </div>
 </template>
 
@@ -561,61 +445,6 @@ defineExpose(handle)
 .sprint-editor .sprint-empty .klass {
   color: oklch(0.5 0.14 40);
 }
-
-/* Element at caret: selection is accent + 1px accent-border ring, never a fill (design §1). */
-.sprint-plus {
-  position: absolute;
-  z-index: 5;
-  display: flex;
-  gap: 4px;
-  margin: 1px 0 0 10px; /* right of the caret */
-}
-.sprint-plus button {
-  height: 18px;
-  padding: 0 6px;
-  border: 1px dashed var(--border);
-  border-radius: 5px;
-  background: var(--card);
-  color: var(--muted-foreground);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  line-height: 1;
-  white-space: nowrap;
-  transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
-}
-.sprint-plus button:hover { border-color: var(--primary); border-style: solid; background: var(--accent); color: var(--primary); }
-.sprint-insert {
-  position: absolute;
-  z-index: 60; /* above Monaco's overlays (suggest widget is 40) */
-  width: 300px;
-  padding: 6px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--popover);
-  box-shadow: 0 18px 40px -14px rgb(0 0 0 / 0.3);
-}
-.sprint-insert input {
-  width: 100%;
-  height: 28px;
-  padding: 0 8px;
-  border: 1px solid var(--input);
-  border-radius: 6px;
-  background: var(--card);
-  font-size: 12px;
-  outline: none;
-}
-.sprint-insert input:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
-.sprint-insert ul { max-height: 260px; margin: 6px 0 0; padding: 0; overflow: auto; list-style: none; }
-.sprint-insert li { display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 6px; border-radius: 6px; cursor: default; }
-.sprint-insert li.on { background: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-border); }
-.sprint-insert li.none { color: var(--muted-foreground); font-size: 11px; }
-.sprint-insert .badge {
-  width: 20px; height: 20px; display: grid; place-items: center; border-radius: 5px;
-  background: var(--info-bg); color: var(--info); font-family: var(--font-mono); font-size: 9.5px; font-weight: 600;
-}
-.sprint-insert .badge.html { background: var(--muted); color: var(--muted-foreground); }
-.sprint-insert .name { font-family: var(--font-mono); font-size: 11.5px; font-weight: 500; }
-.sprint-insert .hint { margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--muted-foreground); }
 
 .sprint-editor .sprint-element-bold {
   font-weight: 600;

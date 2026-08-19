@@ -4,6 +4,9 @@ import type { ComponentSchema, Message, Meta, Row } from '@sprint/core'
 // not have to depend on @sprint/core directly.
 export type { ComponentSchema, Message, Meta, Row }
 
+/** The three geometries of the editing view (SPEC §2): canvas only, canvas + code, code only. */
+export type EditorMode = 'blocks' | 'split' | 'code'
+
 export type Asset = { mime: string; base64: string }
 export type Assets = Record<string, Asset>
 

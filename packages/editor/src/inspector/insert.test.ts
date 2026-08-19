@@ -10,10 +10,14 @@ test('componentText stubs required props with the caret in the first value', () 
 })
 
 test('insertItems is context-aware', () => {
-  const root = insertItems([qr], [temp], null).map((i) => i.name)
-  expect(root).toContain('QrCode')
-  expect(root).toContain('div')
-  expect(root).not.toContain('li') // li needs a list parent
+  const root = insertItems([qr], [temp], null)
+  const names = root.map((i) => i.name)
+  expect(names).toContain('QrCode')
+  expect(names).toContain('div')
+  // `li` stays visible but says why it cannot go here (SPEC §4.8).
+  expect(root.find((i) => i.name === 'li')!.illegal).toBe('only inside ul · ol')
+  expect(root.find((i) => i.name === 'div')!.illegal).toBeUndefined()
+  expect(insertItems([qr], [temp], 'ol').find((i) => i.name === 'li')!.illegal).toBeUndefined()
   expect(insertItems([qr], [temp], 'ul').map((i) => i.name)).toEqual(['li'])
   expect(insertItems([qr], [temp], 'tr').map((i) => i.name)).toEqual(['td', 'th'])
   expect(insertItems([qr], [temp], 'div').map((i) => i.name)).toContain('span')

@@ -13,7 +13,13 @@ import { parseMeta } from './meta'
 /** Modules the compiled template code may import. Anything else is a compile error. */
 export const ALLOWED_MODULES = ['vue', 'sprint', 'qrcode'] as const
 
-export type ParsedSnippet = { name: string; source: string; descriptor: SFCDescriptor }
+export type ParsedSnippet = {
+  name: string
+  source: string
+  descriptor: SFCDescriptor
+  /** Add this to an offset in `source` to get the offset in the *file* (spec: one model, one truth). */
+  locBase: number
+}
 
 export type ParsedTemplate = {
   meta: Meta
@@ -68,7 +74,10 @@ export function parseTemplate(source: string): ParsedTemplate {
       const snippetSource = snippetToSfc(block.content, block.attrs.props)
       const parsedSnippet = parse(snippetSource, { filename: `${name}.vue` })
       for (const e of parsedSnippet.errors) errors.push(toMessage(e, file))
-      snippets.push({ name, source: snippetSource, descriptor: parsedSnippet.descriptor })
+      // The wrapper (shorthand form) keeps the body verbatim, so finding it gives the shift
+      // from snippet-source offsets back to file offsets.
+      const locBase = block.loc.start.offset - snippetSource.indexOf(block.content)
+      snippets.push({ name, source: snippetSource, descriptor: parsedSnippet.descriptor, locBase })
     }
   }
 
@@ -98,7 +107,7 @@ function lintPurity(script: string, file: string, lineBase: number, out: Message
 // ---------------------------------------------------------------- compile
 
 export type CompileOptions = {
-  /** Add `data-loc="start:end"` (offsets into the file) to every element of the MAIN template. */
+  /** Add `data-loc="start:end"` (offsets into the file) to every element of the template. */
   inspector?: boolean
 }
 
@@ -120,14 +129,14 @@ export function compileTemplate(source: string, opts: CompileOptions = {}): Comp
   blocks.push(`Object.assign(__modules__['sprint'], __components__);`)
 
   for (const snippet of parsed.snippets) {
-    blocks.push(`__components__[${JSON.stringify(snippet.name)}] = ${compileComponent(snippet.source, snippet.name, `snippet:${snippet.name}`, errors, css, false)};`)
+    blocks.push(`__components__[${JSON.stringify(snippet.name)}] = ${compileComponent(snippet.source, snippet.name, `snippet:${snippet.name}`, errors, css, opts.inspector ? snippet.locBase : false)};`)
     sources[snippet.name] = snippet.source
   }
 
   // The main SFC is compiled from the original file so <template>/<script>/<style> offsets
   // (and therefore data-loc) stay absolute; the custom blocks are ignored by compiler-sfc.
   const mainSource = parsed.main.template || parsed.main.scriptSetup || parsed.main.script ? source : '<template></template>'
-  const main = compileComponent(mainSource, 'main', 'main', errors, css, !!opts.inspector)
+  const main = compileComponent(mainSource, 'main', 'main', errors, css, opts.inspector ? 0 : false)
 
   const code = [
     'const __components__ = {};',
@@ -149,7 +158,8 @@ function compileComponent(
   file: string,
   errors: Message[],
   css: string[],
-  inspector: boolean,
+  /** Offset of this SFC inside the file, or `false` for no inspector attributes at all. */
+  locBase: number | false,
 ): string {
   const id = `sprint-${name.replace(/[^\w-]/g, '_')}`
   const scopeAttr = `data-v-${id}`
@@ -161,15 +171,20 @@ function compileComponent(
       if (script) lintPurity(script.content, file, script.loc.start.line, errors)
 
     const scoped = descriptor.styles.some((s) => s.scoped)
-    // The template compiler only sees the <template> block, but data-loc offsets must be
-    // absolute in the file — so add where that block starts.
+    // data-loc offsets must be absolute in the *file*, so add where this SFC starts (0 for the
+    // main one, the snippet's own offset for a snippet). What comes on top differs per branch:
+    // `compileScript` inlines the AST `parse()` already built from the whole SFC, so those node
+    // offsets count from the SFC's start; a standalone template compile only sees the
+    // <template> body and counts from there.
+    const inline = !!(descriptor.scriptSetup || descriptor.script)
+    const base = (locBase === false ? 0 : locBase) + (inline ? 0 : descriptor.template?.loc.start.offset ?? 0)
     const compilerOptions = {
       scopeId: scoped ? scopeAttr : undefined,
-      nodeTransforms: inspector ? [locTransform(descriptor.template?.loc.start.offset ?? 0)] : [],
+      nodeTransforms: locBase === false ? [] : [locTransform(base)],
     }
 
     let body: string
-    if (descriptor.scriptSetup || descriptor.script) {
+    if (inline) {
       body = compileScript(descriptor, { id, inlineTemplate: true, templateOptions: { compilerOptions } }).content
     } else {
       const t = compileVueTemplate({ source: descriptor.template?.content ?? '', filename: `${name}.vue`, id, compilerOptions })
@@ -192,13 +207,18 @@ function compileComponent(
   }
 }
 
-/** `data-loc="start:end"` on every element node, so a preview click maps back to source. */
+/**
+ * `data-loc="start:end"` on every element node, so a canvas click maps back to source.
+ * A *component* call site gets `data-inst` instead: its value falls through onto the
+ * component's root element, which already carries its own `data-loc` from the snippet's
+ * own compile — two names, so neither overwrites the other.
+ */
 function locTransform(base: number) {
-  return (node: { type: number; props?: unknown[]; loc: { start: { offset: number }; end: { offset: number } } }) => {
+  return (node: { type: number; tagType?: number; props?: unknown[]; loc: { start: { offset: number }; end: { offset: number } } }) => {
     if (node.type !== 1 /* NodeTypes.ELEMENT */) return
     node.props?.push({
       type: 6, // NodeTypes.ATTRIBUTE
-      name: 'data-loc',
+      name: node.tagType === 1 /* COMPONENT */ ? 'data-inst' : 'data-loc',
       nameLoc: node.loc,
       value: { type: 2 /* TEXT */, content: `${base + node.loc.start.offset}:${base + node.loc.end.offset}`, loc: node.loc },
       loc: node.loc,
