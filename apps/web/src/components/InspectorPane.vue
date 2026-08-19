@@ -9,8 +9,8 @@ import { useMediaQuery } from '@vueuse/core'
 import { InspectorPane as Inspector } from '@sprint/editor'
 import type { Loc } from '@sprint/editor/ast.ts'
 import {
-  addClassToElement, addProp, availableClasses, caretLine, changeSelectedTag, declare, deleteRule,
-  editor, element, elementMarkers, elementSchema, ensureSelector, goToOffset, handle,
+  addClassToElement, addProp, availableClasses, caretLine, declare, deleteRule,
+  editor, element, elementComputed, elementMarkers, elementSchema, ensureSelector, goToOffset, handle,
   removeClassFromElement, renameRule, ruleAtCaret, ruleOrigin, ruleUsage, scopeProps, setSelectedText,
   styleMarkers, styleTargets, variables,
 } from '@/stores/editor'
@@ -19,9 +19,9 @@ import { settings } from '@/stores/settings'
 /** What the caret is in: an element, a rule (Style block), or the script block (E8). */
 const kind = computed(() => (editor.activeTab.kind === 'template' ? 'element' : editor.activeTab.kind === 'style' ? 'rule' : 'script'))
 
-/** E12: under 900px the sections are an accordion — opening one shuts the other two. */
+/** E12: under 900px the sections are an accordion — opening one shuts the others. */
 const stacked = useMediaQuery('(max-width: 900px)')
-function toggle(section: 'props' | 'attributes' | 'style') {
+function toggle(section: 'props' | 'attributes' | 'logic' | 'style') {
   const collapsed = settings.inspectorCollapsed
   if (stacked.value && collapsed[section]) for (const k of Object.keys(collapsed) as (keyof typeof collapsed)[]) collapsed[k] = true
   collapsed[section] = !collapsed[section]
@@ -50,6 +50,7 @@ const locator = computed(() => {
     :targets="styleTargets"
     :classes="availableClasses()"
     :variables="variables"
+    :computed-style="elementComputed"
     :markers="elementMarkers"
     :style-markers="styleMarkers"
     :rule="ruleAtCaret"
@@ -65,7 +66,6 @@ const locator = computed(() => {
     @ensure-selector="ensureSelector"
     @detach="removeClassFromElement"
     @set-text="setSelectedText"
-    @change-tag="changeSelectedTag"
     @add-prop="addProp"
     @declare="declare"
     @rename-rule="ruleAtCaret && renameRule(ruleAtCaret, $event)"

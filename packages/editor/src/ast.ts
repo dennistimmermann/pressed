@@ -457,13 +457,19 @@ export type LayerNode = {
   isComponent: boolean
   /** `<img />`, `<temp />`: nothing can be dropped inside it. */
   selfClosing: boolean
-  /** `v-if` / `v-for` … — the right-aligned mono hints of a Layers row. */
+  /** `if` / `loop` … — the right-aligned mono hints of a Layers row (`DIRECTIVE_LABELS`). */
   hints: string[]
   children: LayerNode[]
 }
 
-/** The directives the Inspector gives a field to — and, minus the `v-`, what Layers hints. */
-export const DIRECTIVE_FIELDS = ['v-if', 'v-else-if', 'v-else', 'v-for', 'v-html']
+/**
+ * The directives the Inspector gives a field to, with the plain word the UI calls them by
+ * (the block editor is for people who do not read `v-`): the Inspector keys, the Layers hints.
+ */
+export const DIRECTIVE_LABELS: Record<string, string> = { 'v-if': 'if (v-if)', 'v-else-if': 'else if (v-else-if)', 'v-else': 'else (v-else)', 'v-for': 'loop (v-for)', key: 'identify by (:key)' }
+/** The short form for a Layers row hint. */
+export const DIRECTIVE_HINTS: Record<string, string> = { 'v-if': 'if', 'v-else-if': 'else if', 'v-else': 'else', 'v-for': 'loop' }
+export const DIRECTIVE_FIELDS = ['v-if', 'v-else-if', 'v-else', 'v-for']
 const HINTED = new Set(DIRECTIVE_FIELDS.map((d) => d.slice(2)))
 
 /**
@@ -471,11 +477,16 @@ const HINTED = new Set(DIRECTIVE_FIELDS.map((d) => d.slice(2)))
  * field that edits it, `aliases` as the names it declares for the `{ }` picker, `list` the
  * expression iterated. An unparsable clause yields empty strings — the row then reads as unset.
  */
-export function loopClause(clause: string): { alias: string; aliases: string[]; list: string } {
+export function loopClause(clause: string): { alias: string; aliases: string[]; item: string; index: string; list: string } {
   const m = /^\(?([^)]*?)\)?\s+(?:in|of)\s+([\s\S]*)$/.exec(clause)
   const alias = m?.[1] ?? ''
-  return { alias, aliases: alias.split(',').map((s) => s.trim()).filter(Boolean), list: m?.[2] ?? '' }
+  const aliases = alias.split(',').map((s) => s.trim()).filter(Boolean)
+  // `item` and `index` are the two the UI edits; a third (object key) rides along in `alias`.
+  return { alias, aliases, item: aliases[0] ?? '', index: aliases[1] ?? '', list: m?.[2] ?? '' }
 }
+
+/** The other way round: `item`, `index` → the alias part of a `v-for` (`item` or `(item, i)`). */
+export const loopAlias = (item: string, index: string) => (index.trim() ? `(${item.trim()}, ${index.trim()})` : item.trim())
 
 /**
  * The element tree of one template block. `blockLoc` is the block's own range (main template
@@ -498,7 +509,7 @@ function layerNodes(nodes: TemplateChildNode[], base: number): LayerNode[] {
       classes: (attrValue(node, 'class') ?? '').split(/\s+/).filter(Boolean),
       isComponent: !isHtmlTag(node.tag),
       selfClosing: !!node.isSelfClosing || VOID_TAGS.has(node.tag),
-      hints: node.props.filter((p) => p.type === 7 && HINTED.has(p.name)).map((p) => `v-${(p as { name: string }).name}`),
+      hints: node.props.filter((p) => p.type === 7 && HINTED.has(p.name)).map((p) => DIRECTIVE_HINTS[`v-${(p as { name: string }).name}`]),
       children: layerNodes(node.children, base),
     })
   }
@@ -676,28 +687,6 @@ export function deleteElement(source: string, el: ElementInfo): StructureEdit {
   if (!editable(source, el)) return NONE
   const cut = ownLine(source, el.loc)
   return done([{ ...cut, text: '' }], cut.start)
-}
-
-/**
- * Rename open and close tag. Props and children are untouched — except across the void
- * boundary, where `<br />` grows a body and `<div>x</div>` loses one.
- */
-export function changeTag(source: string, el: ElementInfo, tag: string): StructureEdit {
-  if (!editable(source, el) || !tag.trim() || tag === el.tag) return NONE
-  const close = closeTagStart(source, el)
-  const attrs = source.slice(el.nameLoc.end, close === null ? el.loc.end : innerStart(source, el))
-    .replace(/\/?>$/, '')
-    .trimEnd()
-  if (VOID_TAGS.has(tag)) return done([{ ...el.loc, text: `<${tag}${attrs} />` }], el.loc.start)
-  if (close === null) return done([{ ...el.loc, text: `<${tag}${attrs}></${tag}>` }], el.loc.start)
-  const closeName = source.slice(close, el.loc.end).indexOf(el.tag)
-  return done(
-    [
-      { ...el.nameLoc, text: tag },
-      { start: close + closeName, end: close + closeName + el.tag.length, text: tag },
-    ],
-    el.loc.start,
-  )
 }
 
 /** Replace the element's own text (only elements that have `text` — see `ElementInfo.text`). */

@@ -27,7 +27,7 @@ import {
   enterScope, erroredElements, filename, formatBlock, goToOffset, indentSelected, jumpTo, layerCount, layers,
   leaveScope, load, matchedLocs, meta, insertables, insertText, moveSelected, outdentSelected, previewDocument,
   previewState, renameRule, reparent, ruleAtCaret, runOnElement, save, saveAs, scopeRange,
-  scopeRules, scriptInfo, selectElement, switchTab, tabs, wrapChoices,
+  scopeRules, scriptInfo, selectElement, setComputedStyles, switchTab, tabs, wrapChoices,
 } from '@/stores/editor'
 import { data } from '@/stores/data'
 import { settings } from '@/stores/settings'
@@ -178,6 +178,7 @@ const canvasProps = computed(() => ({
   'onEnter-scope': canvasEnterScope,
   onReorder: canvasReorder,
   onResize: canvasResize,
+  'onComputed-styles': setComputedStyles,
   onStep: (by: number) => {
     data.previewRowIndex = Math.min(Math.max(data.previewRowIndex + by, 0), data.rows.length - 1)
   },

@@ -29,9 +29,9 @@ export type { ElementInfo, PropInfo, CursorContext, Edit, Loc } from './ast'
 // Codeless structure editing: each primitive is pure `(source, element) → edits + where it landed`.
 export {
   parentOf, siblingsOf, elementTree, countMatching, matchingElements, moveElement, indentElement, outdentElement,
-  wrapElement, unwrapElement, duplicateElement, deleteElement, changeTag, setText, reparentElement,
+  wrapElement, unwrapElement, duplicateElement, deleteElement, setText, reparentElement,
 } from './ast'
 export type { LayerNode, StructureEdit } from './ast'
-export { HTML_TAGS, isHtmlTag } from './inspector/insert'
-export { ruleAt, parseRule, setDeclaration, parseLength, rulesIn, findRule } from './css'
+export { isHtmlTag } from './inspector/insert'
+export { ruleAt, parseRule, setDeclaration, setDeclarations, parseLength, rulesIn, findRule } from './css'
 export type { Rule, Declaration, StyleTarget } from './css'

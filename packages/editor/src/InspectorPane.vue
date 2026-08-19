@@ -1,8 +1,8 @@
 <!--
   The Inspector (SPEC §4.3 · §4.4): whatever is at the caret, in every mode. A 36px header —
-  kind chip, name, locator — then three sections with the same header pattern as Layers.
+  kind chip, name, locator — then the sections, with the same header pattern as Layers.
 
-    element  PROPS (snippet scopes only) · ATTRIBUTES · STYLE
+    element  PROPS (snippet scopes only) · ATTRIBUTES · LOGIC · STYLE
     rule     SELECTOR · USED BY · STYLE, and `Delete rule…` in the pane footer
     script   PROPS only (E8)
 
@@ -15,13 +15,13 @@ import Msgs from './Msgs.vue'
 import PropertyEditor from './PropertyEditor.vue'
 import StylePane from './StylePane.vue'
 import { aria, hasError, level } from './inspector/markers'
-import { setDeclaration, type Declaration, type Rule, type StyleTarget } from './css'
+import { setDeclarations, type Declaration, type Rule, type StyleTarget } from './css'
 import { DIRECTIVE_FIELDS } from './ast'
 import type { ElementInfo, LayerNode, Loc } from './ast'
 import type { EditorHandle, Marker } from './editor-handle'
 import type { ComponentSchema } from './types'
 
-type Section = 'props' | 'attributes' | 'style'
+type Section = 'props' | 'attributes' | 'logic' | 'style'
 
 const props = defineProps<{
   /** What is at the caret. `script` is E8: props only. */
@@ -40,6 +40,12 @@ const props = defineProps<{
   classes?: { name: string; declarations: number; origin?: string | null }[]
   /** What the `{ }` picker offers on text-y fields. */
   variables?: { path: string; hint: string }[]
+  /**
+   * What the renderer actually computes for this element, for the enumerated properties only
+   * (`display`, `justify-content`, …). It is what the STYLE grid shows muted where the rule
+   * itself says nothing. Absent until the first render snapshot arrives.
+   */
+  computedStyle?: Record<string, string> | null
   /** Diagnostics inside `element` — ATTRIBUTES shows each one under the field it belongs to. */
   markers?: Marker[]
   /** Diagnostics anywhere in the style block(s) rules come from; the grid keeps the rule's own. */
@@ -69,7 +75,6 @@ const emit = defineEmits<{
   /** `✕` on a class pill: take the class off this element, the rule survives. */
   detach: [cls: string]
   'set-text': [text: string]
-  'change-tag': [tag: string]
   'add-prop': [name: string]
   'rename-rule': [selector: string]
   'delete-rule': []
@@ -88,7 +93,7 @@ const open = (s: Section) => !props.collapsed?.[s]
 const sections = computed<Section[]>(() => {
   if (props.kind === 'script') return ['props']
   if (props.kind === 'rule') return ['props', 'attributes', 'style']
-  return props.scopeProps ? ['props', 'attributes', 'style'] : ['attributes', 'style']
+  return props.scopeProps ? ['props', 'attributes', 'logic', 'style'] : ['attributes', 'logic', 'style']
 })
 const vars = (s: Section) => ({ '--i': sections.value.indexOf(s), '--below': sections.value.length - 1 - sections.value.indexOf(s) })
 
@@ -126,6 +131,28 @@ const active = computed<StyleTarget | null>(
   () => props.targets?.find((t) => pillKey(t) === picked.value) ?? props.targets?.at(-1) ?? null,
 )
 const activeRule = computed(() => (props.kind === 'rule' ? props.rule ?? null : active.value?.rule ?? null))
+/** Which rule the grid is on — never the rule object, which is re-parsed on every keystroke.
+ *  The grid remounts when this changes, so its own state (open rows, arity history) starts over. */
+const styleKey = computed(() =>
+  props.kind === 'rule' ? `rule@${props.rule?.selector ?? ''}` : active.value ? pillKey(active.value) : 'none',
+)
+
+/**
+ * What is in force on this element without the rule saying so — the grid draws it muted instead
+ * of unset. The rendered document knows the real answer (the whole cascade, the base stylesheet,
+ * the browser's own defaults), so `computedStyle` is it; `BASE_STYLE` only stands in until the
+ * first snapshot arrives, and knows the one rule the runtime puts under every label
+ * (`packages/core` · `:where(div){display:flex;flex-direction:column}`).
+ */
+const BASE_STYLE: Record<string, Record<string, string>> = {
+  div: { display: 'flex', 'flex-direction': 'column' },
+}
+const inherited = computed(
+  () =>
+    props.computedStyle ??
+    BASE_STYLE[(props.kind === 'rule' ? props.rule?.selector : props.element?.tag)?.trim() ?? ''] ??
+    {},
+)
 
 /** The grid edits one rule; it shows the diagnostics that start in it. */
 const ruleMarkers = computed(() => {
@@ -181,16 +208,16 @@ function pickSelector(selector: string) {
 // ---------------------------------------------------------------- style edits
 // The rule exists → one text edit from here. It does not → the host creates it first.
 
-function onSet(prop: string, value: string | null) {
+function onSet(changes: { prop: string; value: string | null }[]) {
   const rule = activeRule.value
-  if (rule) return props.handle?.executeEdits([setDeclaration(props.source, rule, prop, value)])
+  if (rule) return props.handle?.executeEdits([setDeclarations(props.source, rule, changes)])
   const selector = active.value?.selector
-  if (selector) emit('declare', { selector, prop, value })
+  if (selector) for (const c of changes) emit('declare', { selector, ...c })
 }
 
 /** `all properties…`: renaming a property is one edit over the property's own range. */
 function renameProp(d: Declaration, prop: string) {
-  if (!prop.trim()) return onSet(d.prop, null)
+  if (!prop.trim()) return onSet([{ prop: d.prop, value: null }])
   props.handle?.executeEdits([{ start: d.start, end: d.start + d.prop.length, text: prop.trim() }])
 }
 
@@ -219,15 +246,21 @@ function addProp() {
 /** PROPS: what Volar says about each `defineProps` member, under the row that declares it. */
 const propMarkers = computed(() => (props.scopeProps ?? []).flatMap((p) => p.markers ?? []))
 
-/** What ATTRIBUTES actually shows: plain attributes plus the directives that get a row. */
-const attrCount = computed(
-  () => props.element?.props.filter((p) => !p.isEvent && (!p.name.startsWith('v-') || DIRECTIVE_FIELDS.includes(p.name))).length ?? 0,
-)
+/** What LOGIC owns: the `v-` props, and `key` — which belongs to the loop row while `v-for` is set. */
+const logicProps = computed(() => {
+  const all = props.element?.props ?? []
+  const loop = all.some((p) => p.name === 'v-for')
+  return all.filter((p) => p.name.startsWith('v-') || (loop && p.name === 'key'))
+})
+const logicCount = computed(() => logicProps.value.filter((p) => DIRECTIVE_FIELDS.includes(p.name)).length)
+/** …so ATTRIBUTES shows the rest: plain attributes, `class` and event-less props included. */
+const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent && !logicProps.value.includes(p)).length ?? 0)
 
-/** The section header says something is wrong in there even while the section is collapsed. */
-const markerLevel = computed(() =>
-  !props.markers?.length ? null : props.markers.some((m) => m.severity === 'error') ? 'error' : 'warning',
+/** The section headers say something is wrong in there even while the section is collapsed. */
+const logicMarkers = computed(() =>
+  (props.markers ?? []).filter((m) => logicProps.value.some((p) => m.start >= p.loc.start && m.start < p.loc.end)),
 )
+const attrMarkers = computed(() => (props.markers ?? []).filter((m) => !logicMarkers.value.includes(m)))
 </script>
 
 <template>
@@ -300,13 +333,26 @@ const markerLevel = computed(() =>
         <button type="button" class="head hair" :style="vars('attributes')" @click="toggle('attributes')">
           <span class="eyebrow flex-1 text-left">Attributes</span>
           <span class="meta">{{ attrCount }}</span>
-          <span v-if="markerLevel" class="meta dot" :class="markerLevel">● {{ markers?.length }}</span>
+          <span v-if="level(attrMarkers)" class="meta dot" :class="level(attrMarkers)">● {{ attrMarkers.length }}</span>
           <span class="chev">{{ open('attributes') ? '▾' : '▸' }}</span>
         </button>
         <div v-if="open('attributes')" class="body" data-sect="attributes" :style="vars('attributes')">
           <PropertyEditor
             :element="element" :schema="schema" :handle="handle" :variables="variables" :markers="markers"
-            @set-text="emit('set-text', $event)" @change-tag="emit('change-tag', $event)"
+            @set-text="emit('set-text', $event)"
+          />
+        </div>
+
+        <!-- ---------------------------------------------------- LOGIC -->
+        <button type="button" class="head hair" :style="vars('logic')" @click="toggle('logic')">
+          <span class="eyebrow flex-1 text-left">Logic</span>
+          <span class="meta">{{ logicCount }}</span>
+          <span v-if="level(logicMarkers)" class="meta dot" :class="level(logicMarkers)">● {{ logicMarkers.length }}</span>
+          <span class="chev">{{ open('logic') ? '▾' : '▸' }}</span>
+        </button>
+        <div v-if="open('logic')" class="body" data-sect="logic" :style="vars('logic')">
+          <PropertyEditor
+            part="logic" :element="element" :schema="schema" :handle="handle" :variables="variables" :markers="markers"
           />
         </div>
       </template>
@@ -372,7 +418,7 @@ const markerLevel = computed(() =>
           </div>
           <p v-if="kind === 'element' && !targets?.length" class="none">no class on this element yet — add one with +</p>
 
-          <StylePane :rule="activeRule" :markers="gridMarkers" @set="onSet" @rename-prop="renameProp" />
+          <StylePane :key="styleKey" :rule="activeRule" :markers="gridMarkers" :inherited="inherited" @set="onSet" @rename-prop="renameProp" />
         </div>
       </template>
     </div>

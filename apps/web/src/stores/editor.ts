@@ -3,7 +3,7 @@ import { parseMeta } from '@sprint/core/template/meta.ts'
 import { labelDocument } from '@sprint/core/template/label.ts'
 import { RenderSuperseded } from '@sprint/editor/runtime-client.ts'
 import {
-  attributeEdit, changeTag, countMatching, deleteElement, duplicateElement, elementAt, elementTree,
+  attributeEdit, countMatching, deleteElement, duplicateElement, elementAt, elementTree,
   indentElement, loopClause, matchingElements, moveElement, outdentElement, parentOf, reparentElement, setText,
   unwrapElement, wrapElement, insertElementText,
 } from '@sprint/editor/ast.ts'
@@ -559,7 +559,6 @@ export const wrapSelected = (tag: string) => run(null, (s, el) => wrapElement(s,
 export const unwrapSelected = () => run(null, unwrapElement)
 export const duplicateSelected = () => run(null, duplicateElement)
 export const deleteSelected = () => run(null, deleteElement)
-export const changeSelectedTag = (tag: string) => run(null, (s, el) => changeTag(s, el, tag))
 export const setSelectedText = (text: string) => run(null, (s, el) => setText(s, el, text))
 
 /** A Layers row: select it (caret at the tag's start — the same as clicking it in the preview). */
@@ -829,7 +828,7 @@ const loopAliases = computed<{ path: string; hint: string }[]>(() => {
   let el = element.value
   while (el) {
     for (const name of loopClause(el.props.find((p) => p.name === 'v-for')?.value ?? '').aliases)
-      if (!out.some((v) => v.path === name)) out.push({ path: name, hint: 'v-for' })
+      if (!out.some((v) => v.path === name)) out.push({ path: name, hint: 'loop' })
     el = parentOf(source, el)
   }
   return out
@@ -893,6 +892,43 @@ export const ruleUsage = computed(() =>
   ruleAtCaret.value ? matchingElements(layers.value, ruleAtCaret.value.selector) : [],
 )
 export const matchedLocs = computed<Loc[]>(() => ruleUsage.value.map((n) => n.loc))
+
+// ------------------------------------------------- what the browser actually computes
+
+/**
+ * The effective value of the enumerated STYLE properties, per rendered element — measured inside
+ * the preview frame and pushed out once per document (see `PreviewPane`'s inspector script).
+ * Keyed by the `data-loc` string, which is file-absolute, so it matches an element's `loc`
+ * directly. Every mount of the canvas posts its own copy; last write wins, they are identical.
+ */
+export const computedStyles = shallowRef<Record<string, Record<string, string>>>({})
+
+/** Browser vocabulary → the words the controls offer. Anything not listed passes through. */
+const CANON: Record<string, Record<string, string>> = {
+  'justify-content': { normal: 'flex-start', start: 'flex-start', end: 'flex-end', left: 'flex-start', right: 'flex-end' },
+  'align-items': { normal: 'stretch', start: 'flex-start', end: 'flex-end' },
+  'text-align': { start: 'left', end: 'right' },
+}
+
+export function setComputedStyles(styles: Record<string, Record<string, string>>) {
+  const out: Record<string, Record<string, string>> = {}
+  for (const [loc, props] of Object.entries(styles)) {
+    const one: Record<string, string> = {}
+    for (const [prop, raw] of Object.entries(props)) {
+      // Per-side shorthands (`none solid none solid`) are nothing a single control can show.
+      if (!raw || raw.includes(' ')) continue
+      one[prop === 'text-decoration-line' ? 'text-decoration' : prop] = CANON[prop]?.[raw] ?? raw
+    }
+    out[loc] = one
+  }
+  computedStyles.value = out
+}
+
+/** The snapshot the Inspector is on: the caret's element, or — in rule mode — the rule's first user. */
+export const elementComputed = computed(() => {
+  const loc = ruleAtCaret.value ? ruleUsage.value[0]?.loc : element.value?.loc
+  return loc ? computedStyles.value[`${loc.start}:${loc.end}`] : undefined
+})
 
 // ---------------------------------------------------------------- the canvas (SPEC §4.5)
 

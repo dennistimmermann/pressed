@@ -84,7 +84,8 @@ const editorProps = computed(() => ({
 <template>
   <div class="flex h-full min-h-0 flex-col">
     <!-- The block tabs appear with the code they switch between, never above the panes (SPEC §7). -->
-    <header class="flex h-[46px] flex-none items-center gap-2 border-b border-[var(--section-border)] px-[6px]">
+    <!-- Too narrow: the header scrolls sideways (`scroll-thin`), its parts never shrink. -->
+    <header class="flex h-[46px] flex-none items-center gap-2 overflow-x-auto border-b border-[var(--section-border)] px-[6px] whitespace-nowrap [scrollbar-width:thin] [&>*]:shrink-0">
       <BlockTabs
         :model="tabs" :active="editor.activeTab" :scope="editor.activeTab.scope" :badges="badges"
         @select="switchTab" @add="addBlock"

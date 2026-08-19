@@ -1,21 +1,23 @@
 <!--
-  The Inspector's ATTRIBUTES section (SPEC §4.3): the element at the caret as a form — its text,
-  its tag, its id, the schema-typed props of a component, whatever else is set on it, and
-  `+ attribute` for the rest. Nothing here owns state: every change is one text-range edit on
+  The Inspector's ATTRIBUTES and LOGIC sections (SPEC §4.3): the element at the caret as a form —
+  its text, its tag, its id, the schema-typed props of a component, whatever else is set on it and
+  `+ attribute` (`part: 'attributes'`), or the directive rows and `+ directive` (`part: 'logic'`).
+  One instance per section. Nothing here owns state: every change is one text-range edit on
   the attribute, so ⌘Z in the editor undoes it. Structure lives in Layers, classes in the pills.
 -->
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { attributeEdit, elementAt, loopClause, siblingsOf, type Edit, type ElementInfo, type Loc, type PropInfo } from './ast'
+import { attributeEdit, elementAt, loopAlias, loopClause, siblingsOf, type Edit, type ElementInfo, type Loc, type PropInfo, DIRECTIVE_LABELS } from './ast'
 import type { EditorHandle, Marker } from './editor-handle'
 import type { PropSchema } from '@sprint/core'
 import type { ComponentSchema } from './types'
 import Msgs from './Msgs.vue'
 import { aria as ariaFor, hasError, msgsBy } from './inspector/markers'
 import { htmlAttrsFor } from './inspector/html-attrs'
-import { HTML_TAGS, isHtmlTag } from './inspector/insert'
 
 const props = defineProps<{
+  /** Which section this instance is: the attribute rows (default), or the directive rows. */
+  part?: 'attributes' | 'logic'
   element: ElementInfo | null
   /** Schema for `element.tag`, looked up by the host in library + snippets; null for HTML tags. */
   schema: (ComponentSchema & { doc?: string }) | null
@@ -26,15 +28,8 @@ const props = defineProps<{
   markers?: Marker[]
 }>()
 const emit = defineEmits<{
-  'change-tag': [tag: string]
   'set-text': [text: string]
 }>()
-
-/** Change tag is for HTML only: renaming a component means picking a different component. */
-const tagOptions = computed(() => {
-  const tag = props.element?.tag ?? ''
-  return HTML_TAGS.includes(tag) ? HTML_TAGS : [tag, ...HTML_TAGS]
-})
 
 type Control = 'expression' | 'number' | 'enum' | 'boolean' | 'color' | 'text'
 type Field = {
@@ -54,8 +49,9 @@ const prop = (name: string) => props.element?.props.find((p) => p.name === name)
 
 // ---------------------------------------------------------------- directives
 /**
- * The five directives that decide what a label prints get a row of their own; every other
- * `v-` directive and every `@handler` stays code in the editor. They are written *verbatim*
+ * The directives that decide what a label prints get a row of their own, under plain names
+ * (`DIRECTIVE_LABELS`); every other `v-` directive and every `@handler` stays code in the
+ * editor. They are written *verbatim*
  * with `set-static` (`v-if="row.x"`, bare `v-else`) — `set-binding` would emit `:v-if=`.
  */
 const CONDITIONS = ['v-if', 'v-else-if', 'v-else'] as const
@@ -87,7 +83,6 @@ const directiveFields = computed<Field[]>(() => {
   const out: Field[] = []
   if (condition.value) out.push(exprField(condition.value.name, 'condition'))
   if (loop.value) out.push(exprField('v-for', 'loop'), exprField('key'))
-  if (prop('v-html')) out.push(exprField('v-html'))
   return out
 })
 
@@ -97,7 +92,6 @@ const addableDirectives = computed<string[]>(() => {
   const out: string[] = []
   if (!condition.value) out.push('v-if', ...(canElse.value ? ['v-else-if', 'v-else'] : []))
   if (!loop.value) out.push('v-for')
-  if (!prop('v-html')) out.push('v-html')
   return out
 })
 
@@ -106,7 +100,7 @@ const addableDirectives = computed<string[]>(() => {
  * declared props always (set or not), and everything else that is actually on the element —
  * `class` included, as a plain attribute row (SPEC §7). Event handlers stay in the editor.
  */
-const fields = computed<Field[]>(() => {
+const attrFields = computed<Field[]>(() => {
   const element = props.element
   if (!element) return []
   const known: Field[] = [
@@ -117,9 +111,14 @@ const fields = computed<Field[]>(() => {
   const extra = element.props
     .filter((p) => !taken.some((f) => f.name === p.name) && !p.isEvent && !p.name.startsWith('v-'))
     .map((p) => field(p.name, undefined, p))
-  // Attributes first, then the `logic` group (directives) — `+ attribute` sits between them.
-  return [...known, ...extra, ...directiveFields.value]
+  return [...known, ...extra]
 })
+
+/** Every row of both sections — what `addable` excludes and what `msgs` splits the markers over. */
+const fields = computed<Field[]>(() => [...attrFields.value, ...directiveFields.value])
+
+/** The rows *this* instance renders; the markers of the other section's rows are simply ignored. */
+const rows = computed(() => (props.part === 'logic' ? directiveFields.value : attrFields.value))
 
 /** `+ attribute`: the tag's HTML attributes and any schema prop that has no field yet. */
 const addable = computed(() => {
@@ -202,9 +201,10 @@ function setCondition(next: Condition) {
 }
 
 /** Both halves empty means the loop is gone; anything else is written back verbatim. */
-function setLoop(alias: string, list: string) {
-  if (!alias.trim() && !list.trim()) return loop.value ? commit('v-for', 'remove') : undefined
-  commit('v-for', 'set-static', `${alias.trim()} in ${list.trim()}`)
+/** `item`, `index` and `list` are three inputs of one `v-for`; empty all round removes it. */
+function setLoop(item: string, index: string, list: string) {
+  if (!item.trim() && !index.trim() && !list.trim()) return loop.value ? commit('v-for', 'remove') : undefined
+  commit('v-for', 'set-static', `${loopAlias(item, index)} in ${list.trim()}`)
 }
 
 // --- `{ }` picker: the one home for inserting a variable besides typing (SPEC §4.6)
@@ -234,7 +234,7 @@ function pickVariable(path: string) {
     const current = props.element.text?.value ?? ''
     return emit('set-text', current ? `${current} {{ ${path} }}` : `{{ ${path} }}`)
   }
-  if (name === 'v-for') return setLoop(loopParts.value.alias, path)
+  if (name === 'v-for') return setLoop(loopParts.value.item, loopParts.value.index, path)
   commit(name, name.startsWith('v-') ? 'set-static' : 'set-binding', path)
 }
 
@@ -255,6 +255,13 @@ function addAttribute(name: string) {
 function addDirective(name: string) {
   adding.value = null
   if (name === 'v-else') return commit(name, 'set-static', true)
+  if (name === 'v-for') {
+    // A loop always comes with its index (numbered lists are the everyday case) and is keyed by it.
+    if (!props.element || !props.handle) return
+    focusName = 'v-for-list'
+    const edit = attributeEdit(props.element, 'v-for', 'set-static', '(item, i) in ')
+    return props.handle.executeEdits([{ ...edit, text: `${edit.text} :key="i"` }])
+  }
   focusName = name
   commit(name, 'set-static', '')
 }
@@ -278,12 +285,11 @@ watch(
 
 <template>
   <div v-if="element" class="attrs">
+    <template v-if="part !== 'logic'">
     <!-- The element's own text, when it has no child elements. `{{ }}` is code: mono. -->
     <div v-if="element.text" class="field" :class="{ bad: bad('text') }">
       <label for="prop-text" class="key">text</label>
-      <!-- Vue renders `v-html` instead of the children, so the field would edit nothing. -->
-      <span v-if="prop('v-html')" class="muted">– overridden by v-html</span>
-      <div v-else class="line">
+      <div class="line">
         <textarea
           v-if="element.text.value.includes('\n')"
           id="prop-text" rows="3" class="ctl tall" :value="element.text.value" v-bind="aria('text')"
@@ -298,37 +304,20 @@ watch(
       <Msgs id="msg-text" :markers="msgs.text" />
     </div>
 
-    <div class="field" :class="{ bad: bad('tag') }">
-      <label for="prop-tag" class="key">tag</label>
-      <select
-        id="prop-tag" class="ctl" :value="element.tag" :disabled="!isHtmlTag(element.tag)"
-        :title="isHtmlTag(element.tag) ? 'change the tag' : 'components keep their name'"
-        v-bind="aria('tag')" @change="emit('change-tag', ($event.target as HTMLSelectElement).value)"
-      >
-        <option v-for="tag in tagOptions" :key="tag" :value="tag">{{ tag }}</option>
-      </select>
-      <!-- Whatever no field owns: an unknown component, a prop the schema does not have. -->
+    <!-- Whatever no field owns — an unknown component, a prop the schema does not have — sits on the tag. -->
+    <div v-if="msgs.tag?.length" class="field wide" :class="{ bad: bad('tag') }">
+      <span class="key">{{ element.tag }}</span>
       <Msgs id="msg-tag" :markers="msgs.tag" />
     </div>
-
-    <template v-for="f in fields" :key="f.name">
-    <!-- The directive group opens after the attribute rows; `+ attribute` closes the attribute group. -->
-    <template v-if="f === directiveFields[0]">
-      <div class="add">
-        <input
-          v-if="adding === 'attribute' && !addable.length" :ref="autofocus" v-model="newAttr" placeholder="name"
-          aria-label="new attribute name" class="ctl" @change="addAttribute(newAttr)" @keydown.esc="adding = null"
-        >
-        <button v-else type="button" class="more" @click="adding = adding === 'attribute' ? null : 'attribute'">+ attribute</button>
-      </div>
-      <span class="gname">logic</span>
     </template>
+
+    <template v-for="f in rows" :key="f.name">
     <div
       class="field"
       :class="{ wide: f.control === 'expression', bad: bad(f.name) }" :title="f.hint"
     >
-      <label :for="`prop-${f.name}`" class="key" :class="{ mono: f.name.startsWith('v-') }">
-        {{ f.name }}<span v-if="f.prop?.isBinding" class="bound">:</span>
+      <label :for="`prop-${f.name}`" class="key">
+        {{ DIRECTIVE_LABELS[f.name] ?? f.name }}<span v-if="f.prop?.isBinding && !DIRECTIVE_LABELS[f.name]" class="bound">:</span>
       </label>
 
       <!-- Bound: the expression is authoritative, and it is code — mono, accent. -->
@@ -341,13 +330,18 @@ watch(
         >
           <option
             v-for="[kind, text] in KINDS" :key="kind" :value="kind" :disabled="kind !== 'v-if' && !canElse"
-            :title="kind !== 'v-if' && !canElse ? 'needs a v-if before it' : ''"
+            :title="kind !== 'v-if' && !canElse ? 'needs an if before it' : ''"
           >{{ text }}</option>
         </select>
         <template v-if="f.role === 'loop'">
           <input
-            :id="`prop-${f.name}`" class="ctl expr alias" :value="loopParts.alias" spellcheck="false"
-            placeholder="item" @change="setLoop(onInput($event), loopParts.list)"
+            :id="`prop-${f.name}`" class="ctl expr alias" :value="loopParts.item" spellcheck="false"
+            placeholder="item" aria-label="item" @change="setLoop(onInput($event), loopParts.index, loopParts.list)"
+          >
+          <span class="in">,</span>
+          <input
+            class="ctl expr alias index" :value="loopParts.index" spellcheck="false"
+            placeholder="i" aria-label="index" @change="setLoop(loopParts.item, onInput($event), loopParts.list)"
           >
           <span class="in">in</span>
         </template>
@@ -357,7 +351,7 @@ watch(
           v-else :id="f.role === 'loop' ? 'prop-v-for-list' : `prop-${f.name}`" class="ctl expr"
           :value="f.role === 'loop' ? loopParts.list : value(f)" spellcheck="false" placeholder="–"
           v-bind="aria(f.name)" :aria-label="f.role === 'loop' ? 'list' : undefined"
-          @change="f.role === 'loop' ? setLoop(loopParts.alias, onInput($event)) : setExpression(f, onInput($event))"
+          @change="f.role === 'loop' ? setLoop(loopParts.item, loopParts.index, onInput($event)) : setExpression(f, onInput($event))"
         >
         <button
           v-if="variables?.length && f.name !== 'v-else'" type="button" class="pick"
@@ -405,18 +399,14 @@ watch(
     </div>
     </template>
 
-    <!-- No directive yet: the attribute group closes here and the logic group is just its add action. -->
-    <template v-if="!directiveFields.length">
-      <div class="add">
-        <input
-          v-if="adding === 'attribute' && !addable.length" :ref="autofocus" v-model="newAttr" placeholder="name"
-          aria-label="new attribute name" class="ctl" @change="addAttribute(newAttr)" @keydown.esc="adding = null"
-        >
-        <button v-else type="button" class="more" @click="adding = adding === 'attribute' ? null : 'attribute'">+ attribute</button>
-      </div>
-      <span v-if="addableDirectives.length" class="gname">logic</span>
-    </template>
-    <div v-if="addableDirectives.length" class="add">
+    <div v-if="part !== 'logic'" class="add">
+      <input
+        v-if="adding === 'attribute' && !addable.length" :ref="autofocus" v-model="newAttr" placeholder="name"
+        aria-label="new attribute name" class="ctl" @change="addAttribute(newAttr)" @keydown.esc="adding = null"
+      >
+      <button v-else type="button" class="more" @click="adding = adding === 'attribute' ? null : 'attribute'">+ attribute</button>
+    </div>
+    <div v-if="part === 'logic' && addableDirectives.length" class="add">
       <button type="button" class="more" @click="adding = adding === 'directive' ? null : 'directive'">+ directive</button>
     </div>
 
@@ -435,7 +425,7 @@ watch(
       </div>
 
       <div v-else-if="adding === 'directive'" class="menu at-add">
-        <button v-for="name in addableDirectives" :key="name" type="button" class="item" @click="addDirective(name)">{{ name }}</button>
+        <button v-for="name in addableDirectives" :key="name" type="button" class="item" @click="addDirective(name)">{{ DIRECTIVE_LABELS[name] }}</button>
       </div>
 
       <div v-else class="menu at-add">
@@ -455,7 +445,7 @@ watch(
 /* A directive's name is the machine's word for it (CLAUDE.md), so the label is mono. */
 .key.mono { font-family: var(--font-mono); font-size: 9.5px; }
 .bound { color: var(--accent-link); }
-/* What a row has instead of a control: bare `v-else`, text under `v-html`. */
+/* What a row has instead of a control: bare `else`. */
 .muted { display: flex; align-items: center; height: 26px; font-family: var(--font-sans); font-size: 10.5px; color: var(--muted-foreground); }
 .line { display: flex; align-items: center; gap: 5px; min-width: 0; }
 /* Filled, borderless — focus swaps the border to --primary and the fill to --pane (§3). */
@@ -475,7 +465,8 @@ watch(
 .ctl.expr { color: var(--accent-link); }
 /* The condition's kind and the loop's alias sit before the expression, at their own width. */
 .ctl.kind { flex: none; width: 78px; }
-.ctl.alias { flex: none; width: 92px; }
+.ctl.alias { flex: none; width: 80px; }
+.ctl.alias.index { width: 44px; }
 .in { flex: none; font-family: var(--font-mono); font-size: 10.5px; color: var(--muted-foreground-2); }
 .swatch { flex: none; width: 26px; height: 26px; padding: 2px; border: 1px solid var(--field-border); border-radius: var(--radius-control); background: var(--pane); }
 .check { width: 30px; height: 18px; appearance: none; border: 1px solid var(--field-border); border-radius: 999px; background: var(--field); transition: background-color 120ms ease-out; }
@@ -488,12 +479,6 @@ watch(
 }
 .pick:hover { border-color: var(--primary); background: var(--accent); }
 .add { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; }
-/* Group label, same as the STYLE grid's (`layout` · `box` …). */
-.gname {
-  grid-column: 1 / -1; margin-top: 3px;
-  font-family: var(--font-sans); font-size: 9px; font-weight: 600; letter-spacing: 0.07em;
-  text-transform: uppercase; color: var(--muted-foreground-2);
-}
 .more { border: 0; background: transparent; padding: 0; font-family: var(--font-sans); font-size: 10.5px; font-weight: 500; color: var(--accent-link); }
 .more:hover { text-decoration: underline; }
 

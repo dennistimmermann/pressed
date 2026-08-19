@@ -59,6 +59,8 @@ const emit = defineEmits<{
   reorder: [e: { locs: Loc[]; target: Loc[]; position: 'before' | 'after' | 'inside' }]
   resize: [e: { locs: Loc[]; width: number; height: number | null }]
   step: [by: number]
+  /** Once per document: what the browser computes for the enumerated properties, by `data-loc`. */
+  'computed-styles': [styles: Record<string, Record<string, string>>]
 }>()
 
 const PX_PER_MM = 96 / 25.4
@@ -280,6 +282,27 @@ const INSPECTOR = `
     post({ type: 'resize', locs: chain(r.el), width: mm(w), height: r.k === 'br' && h ? mm(h) : null })
   }
 
+  /**
+   * What the browser actually computes for the enumerated STYLE controls — the only way out of a
+   * null-origin frame is a message, so it is taken here and posted once per document (the host
+   * regenerates the document on every render, so there is nothing to keep up to date). Only these
+   * properties: no lengths, no colours, so the payload stays a few hundred bytes.
+   */
+  var COMPUTED = ['display', 'flex-direction', 'justify-content', 'align-items', 'flex-wrap',
+    'position', 'text-align', 'text-transform', 'font-weight', 'font-style', 'text-decoration-line',
+    'overflow', 'white-space', 'border-style']
+  addEventListener('load', function () {
+    var els = all(), out = {}, i, j
+    for (i = 0; i < els.length; i++) {
+      var cs = getComputedStyle(els[i]), v = {}
+      for (j = 0; j < COMPUTED.length; j++) v[COMPUTED[j]] = cs.getPropertyValue(COMPUTED[j])
+      // A snippet's root carries both ranges and has one computed style: file both keys at it.
+      var a = els[i].getAttribute('data-loc'); if (a) out[a] = v
+      var b = els[i].getAttribute('data-inst'); if (b) out[b] = v
+    }
+    post({ type: 'sprint-computed', styles: out })
+  })
+
   addEventListener('message', function (e) {
     var d = e.data || {}
     if (d.type !== 'sprint-state') return
@@ -350,9 +373,10 @@ const toLoc = (s: string): Loc => {
 
 function onFrameMessage(event: MessageEvent) {
   if (event.source !== frame.value?.contentWindow) return
-  const d = event.data as { type?: string; locs?: string[]; target?: string[]; position?: 'before' | 'after' | 'inside'; width?: number; height?: number | null; dx?: number; dy?: number; alt?: boolean }
+  const d = event.data as { type?: string; locs?: string[]; target?: string[]; position?: 'before' | 'after' | 'inside'; width?: number; height?: number | null; dx?: number; dy?: number; alt?: boolean; styles?: Record<string, Record<string, string>> }
   const locs = (a?: string[]) => (a ?? []).map(toLoc)
   if (d?.type === 'select') emit('select', locs(d.locs))
+  else if (d?.type === 'sprint-computed') emit('computed-styles', d.styles ?? {})
   else if (d?.type === 'dblclick') emit('enter-scope', locs(d.locs))
   else if (d?.type === 'reorder') emit('reorder', { locs: locs(d.locs), target: locs(d.target), position: d.position! })
   else if (d?.type === 'resize') emit('resize', { locs: locs(d.locs), width: d.width!, height: d.height ?? null })

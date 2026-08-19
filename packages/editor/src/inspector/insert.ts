@@ -35,12 +35,6 @@ const HTML: { tag: string; hint: string; parents?: string[]; children?: string[]
 const VOID = new Set(['br', 'hr', 'img'])
 
 /**
- * What the `change tag` select offers: the insert list plus the text tags a label reaches for.
- * Not every HTML tag — a select of 140 entries is a worse control than a short honest one.
- */
-export const HTML_TAGS: string[] = [...HTML.map((h) => h.tag), 'h1', 'h2', 'h3', 'small', 'code', 'section']
-
-/**
  * Is this a plain HTML element? The parser already knows every native tag, so ask it instead
  * of keeping a second list in sync. Anything else in a template is a component or a snippet.
  */

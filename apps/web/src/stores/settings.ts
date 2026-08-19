@@ -24,7 +24,7 @@ export type Settings = {
   layersCollapsed: Record<'layers' | 'rules' | 'script', boolean>
   /** Which Inspector sections are collapsed (SPEC §4.3). The keys are the element-mode names;
       rule mode reuses them in order (props → SELECTOR, attributes → USED BY). */
-  inspectorCollapsed: Record<'props' | 'attributes' | 'style', boolean>
+  inspectorCollapsed: Record<'props' | 'attributes' | 'logic' | 'style', boolean>
   /** Canvas size inside Split mode (height, or width when side by side) and the flip. */
   splitSize: number
   /** Code mode: height of the Preview above the Inspector, px (SPEC §2 default 240). */
@@ -49,7 +49,7 @@ export const settings = persisted<Settings>('sprint.settings', {
   layersWidth: 236,
   inspectorWidth: 340,
   layersCollapsed: { layers: false, rules: true, script: true },
-  inspectorCollapsed: { props: false, attributes: false, style: false },
+  inspectorCollapsed: { props: false, attributes: false, logic: false, style: false },
   splitSize: 326,
   previewHeight: 240,
   editorView: 'block',

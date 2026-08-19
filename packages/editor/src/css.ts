@@ -106,6 +106,70 @@ export function setDeclaration(source: string, rule: Rule, prop: string, value: 
   return { start: at, end: at, text: multi ? `${semi}\n${indent}${prop}: ${value};` : `${semi} ${prop}: ${value};` }
 }
 
+/**
+ * Several declarations as **one** edit — a row that writes more than one declaration (B/I/U,
+ * a future batch) has to stay a single ⌘Z. `setDeclaration` returns offsets into the source
+ * it was given, so the changes are applied one by one to a scratch copy and the rule's body is
+ * then rewritten wholesale.
+ */
+export function setDeclarations(source: string, rule: Rule, changes: { prop: string; value: string | null }[]): Edit {
+  let text = source
+  let r = rule
+  for (const c of changes) {
+    const e = setDeclaration(text, r, c.prop, c.value)
+    text = text.slice(0, e.start) + e.text + text.slice(e.end)
+    r = ruleAt(text, rule.start + 1) ?? r // edits are all inside the body: the head never moves
+  }
+  return { start: rule.bodyStart, end: rule.bodyEnd, text: text.slice(r.bodyStart, r.bodyEnd) }
+}
+
+/**
+ * A side shorthand as the 1–4 tokens it is written with — its *arity* is `.length`. Null when
+ * there is nothing to split or the value is not 1–4 plain tokens: a `calc()` or a `var()` cannot
+ * be split on whitespace, so the pane edits it as text instead.
+ */
+export function splitSides(value: string | undefined): string[] | null {
+  if (!value || /[()]/.test(value)) return null
+  const p = value.trim().split(/\s+/).filter(Boolean)
+  return p.length && p.length <= 4 ? p : null
+}
+
+/**
+ * A side shorthand as its four longhands, in CSS order T·R·B·L (`border-radius` reads that as
+ * TL·TR·BR·BL, same expansion): `1mm` → all four, `1mm 2mm` → v h, `1mm 2mm 3mm` → t h b.
+ */
+export function expandSides(value: string | undefined): [string, string, string, string] | null {
+  const p = splitSides(value)
+  if (!p) return null
+  const [t, r = t, b = t, l = r] = p
+  return [t, r, b, l]
+}
+
+/**
+ * Which sides share one token at each arity, over CSS-order indices (T·R·B·L, which
+ * `border-radius` reads as TL·TR·BR·BL — the same table serves both). A group's **first** index
+ * is its leader: at a shorter arity that is the value the group keeps.
+ */
+export const SIDE_GROUPS: Record<number, number[][]> = {
+  1: [[0, 1, 2, 3]],
+  2: [[0, 2], [1, 3]],
+  3: [[0], [1, 3], [2]],
+  4: [[0], [1], [2], [3]],
+}
+
+/** Four side values re-cut to `arity` tokens — each group takes its leader's value. */
+export function regroup(sides: string[], arity: number): string[] {
+  return SIDE_GROUPS[arity].map((g) => sides[g[0]])
+}
+
+/** The inverse: the fewest tokens that still write these four sides (`0 2mm 0 2mm` → 2). */
+export function impliedArity([t, r, b, l]: string[]): number {
+  if (t === r && t === b && t === l) return 1
+  if (t === b && r === l) return 2
+  if (r === l) return 3
+  return 4
+}
+
 /** `12mm` → { n: 12, unit: 'mm' }; anything else null. */
 export function parseLength(value: string | undefined): { n: number; unit: string } | null {
   const m = value && /^(-?\d*\.?\d+)([a-z%]*)$/i.exec(value.trim())

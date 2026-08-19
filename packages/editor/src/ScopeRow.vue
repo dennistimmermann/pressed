@@ -127,6 +127,9 @@ function commitRename() {
      the only row where the surface rises as you go down. Do not darken it. */
   background: var(--scope);
   white-space: nowrap;
+  /* Too narrow for its tabs and actions: the whole row scrolls, nothing shrinks. */
+  overflow-x: auto;
+  scrollbar-width: thin;
   /* With the tray gone the row no longer inherits a usable foreground, so it re-points the
      text scale the rules below read to the explicit --scope-* one (MIGRATION §3 row 9). */
   --foreground: var(--scope-foreground);
@@ -147,13 +150,11 @@ function commitRename() {
   display: flex;
   align-items: center;
   gap: 2px;
-  min-width: 0;
+  flex: none;
   padding: 3px;
   border: 1px solid var(--scope-well-border);
   border-radius: var(--radius-trough);
   background: var(--scope-well);
-  overflow-x: auto;
-  scrollbar-width: none;
 }
 .tab {
   display: flex;

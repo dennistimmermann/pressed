@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { attributeEdit, cursorContext, elementAt, insertVar, loopClause, type Edit } from './ast'
+import { attributeEdit, cursorContext, elementAt, insertVar, loopAlias, loopClause, type Edit } from './ast'
 
 const SOURCE = `<meta>
 { "name": "T", "size": { "width": 60, "height": 40 } }
@@ -136,7 +136,7 @@ describe('attributeEdit', () => {
 // ---------------------------------------------------------------- structure
 
 import {
-  changeTag, countMatching, deleteElement, duplicateElement, elementTree, indentElement, moveElement,
+  countMatching, deleteElement, duplicateElement, elementTree, indentElement, moveElement,
   outdentElement, parentOf, reparentElement, setText, siblingsOf, unwrapElement, wrapElement,
   type Loc, type StructureEdit,
 } from './ast'
@@ -310,22 +310,6 @@ describe('duplicateElement / deleteElement', () => {
   })
 })
 
-describe('changeTag', () => {
-  it('renames both tags', () => {
-    expect(run(T, changeTag(T, el(T, '<div class="left"'), 'section'))).toContain('<section class="left">')
-    expect(run(T, changeTag(T, el(T, '<div class="left"'), 'section'))).toContain('</section>')
-  })
-
-  it('grows a body when a void tag becomes a normal one', () => {
-    expect(run(T, changeTag(T, el(T, '<hr'), 'p'))).toContain('<p></p>')
-    expect(run(T, changeTag(T, el(T, '<temp '), 'p'))).toContain('<p label="Bed"></p>')
-  })
-
-  it('drops the body when a normal tag becomes void', () => {
-    expect(run(T, changeTag(T, el(T, '<span class="a"'), 'br'))).toContain('<br class="a" />')
-  })
-})
-
 describe('setText', () => {
   it('is offered for text-only elements and replaces their content', () => {
     const span = el(T, '<span class="a"')
@@ -383,7 +367,7 @@ describe('malformed elements', () => {
     for (const r of [
       moveElement(bad, div, 'up'), moveElement(bad, div, 'down'), indentElement(bad, div),
       outdentElement(bad, div), wrapElement(bad, div, 'div'), unwrapElement(bad, div),
-      duplicateElement(bad, div), deleteElement(bad, div), changeTag(bad, div, 'p'),
+      duplicateElement(bad, div), deleteElement(bad, div),
       setText(bad, div, 'x'), reparentElement(bad, div, div.loc, 'after'),
     ])
       expect(r).toEqual({ edits: [], selectAt: null })
@@ -457,10 +441,12 @@ describe('directive edits', () => {
 
 describe('loopClause', () => {
   it('splits alias from list, and names every alias it declares', () => {
-    expect(loopClause('tag in row.tags')).toEqual({ alias: 'tag', aliases: ['tag'], list: 'row.tags' })
+    expect(loopClause('tag in row.tags')).toEqual({ alias: 'tag', aliases: ['tag'], item: 'tag', index: '', list: 'row.tags' })
     expect(loopClause('(item, i) of list.filter(x => x)')).toEqual({
-      alias: 'item, i', aliases: ['item', 'i'], list: 'list.filter(x => x)',
+      alias: 'item, i', aliases: ['item', 'i'], item: 'item', index: 'i', list: 'list.filter(x => x)',
     })
-    expect(loopClause('')).toEqual({ alias: '', aliases: [], list: '' })
+    expect(loopClause('')).toEqual({ alias: '', aliases: [], item: '', index: '', list: '' })
+    expect(loopAlias('item', 'i')).toBe('(item, i)')
+    expect(loopAlias('item', '')).toBe('item')
   })
 })
