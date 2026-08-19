@@ -543,21 +543,11 @@ function onPick(event: Event) {
 </template>
 
 <style scoped>
-/* SPEC §4.2 gives the row colours as literals; the app's dark palette takes over in `.dark`. */
+/* Row colours are tokens (VISUAL-SPEC §3); `--row-hover` and the component badge live in
+   tokens.css so nothing here names a colour of its own. */
 .layers-pane {
-  --row-tag: oklch(0.30 0.012 60);
-  --row-class: oklch(0.55 0.01 60);
-  --row-hover: oklch(0.975 0.003 90);
-  --comp-bg: oklch(0.955 0.012 300);
-  --comp-fg: oklch(0.42 0.07 300);
-}
-/* `:global(x) y` collapses to `x` in a scoped block, so the whole selector has to go global. */
-:global(.dark .layers-pane) {
-  --row-tag: var(--card-foreground);
+  --row-tag: var(--foreground);
   --row-class: var(--muted-foreground);
-  --row-hover: var(--muted);
-  --comp-bg: oklch(0.30 0.04 300);
-  --comp-fg: oklch(0.80 0.06 300);
 }
 
 /* ---- section header: 34px, eyebrow left, mono meta right, ▾ collapse ---- */
@@ -565,29 +555,29 @@ function onPick(event: Event) {
   display: flex; align-items: center; gap: 8px; flex: none;
   height: 34px; padding: 10px 12px 8px; background: transparent; border: 0; width: 100%;
 }
-.head.hair { border-top: 1px solid var(--border); }
+.head.hair { border-top: 1px solid var(--section-border); }
 .head.on .eyebrow { color: var(--foreground); }
-.meta { font-family: var(--font-mono); font-size: 10.5px; font-weight: 450; color: var(--muted-foreground); }
+.meta { font-family: var(--font-mono); font-size: 10.5px; font-weight: 450; color: var(--meta-foreground); }
 .chev { flex: none; font-size: 8px; color: var(--muted-foreground); background: transparent; border: 0; }
 
 /* ---- rows ---- */
 .list { padding: 0 8px 8px; overflow-y: auto; outline: none; }
-.list:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.list:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .row {
   position: relative; display: flex; align-items: center; gap: 7px;
-  height: 27px; padding: 0 9px; border-radius: 6px; cursor: pointer;
+  height: 27px; padding: 0 9px; border-radius: var(--radius-tab); cursor: pointer;
   font-family: var(--font-mono); font-size: 11.5px; font-weight: 500; color: var(--row-tag);
   transition: background-color 120ms ease-out, color 120ms ease-out;
 }
 .row:hover { background: var(--row-hover); }
 .row.selected {
   background: var(--accent); color: var(--accent-foreground);
-  box-shadow: inset 0 0 0 1px var(--accent-border);
+  box-shadow: inset 0 0 0 1px var(--primary);
 }
 .tag { flex: none; }
 .cls { color: var(--row-class); }
 .row.selected .cls { color: inherit; opacity: 0.65; }
-.hint { font-family: var(--font-mono); font-size: 9px; font-weight: 450; color: var(--muted-foreground); }
+.hint { font-family: var(--font-mono); font-size: 9px; font-weight: 450; color: var(--meta-foreground); }
 .hint.unused { color: var(--warning-foreground); }
 .empty { padding: 6px 9px 28px; text-align: center; font-size: 11px; color: var(--muted-foreground); }
 
@@ -597,7 +587,7 @@ function onPick(event: Event) {
 }
 .badge.snip { background: var(--info-bg); color: var(--info); }
 .badge.comp { background: var(--comp-bg); color: var(--comp-fg); }
-.badge.html { background: var(--muted); color: var(--muted-foreground); }
+.badge.html { background: var(--field); color: var(--muted-foreground); }
 
 .caret { flex: none; font-size: 8px; color: var(--muted-foreground); background: transparent; border: 0; }
 /* `⋯` appears on hover, and stays on the selected row. */
@@ -607,37 +597,37 @@ function onPick(event: Event) {
 }
 .row:hover .dots, .row.selected .dots, .dots:focus-visible { opacity: 1; }
 .row.selected .dots { color: inherit; font-weight: 600; }
-.caret:focus-visible, .dots:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ring); border-radius: 4px; }
+.caret:focus-visible, .dots:focus-visible { outline: 2px solid var(--primary); border-radius: 4px; }
 
 /* Drop indicator: a 2px accent rule between rows; "inside" is an inset ring on the row. */
 .line { position: absolute; left: 9px; right: 9px; height: 2px; border-radius: 1px; background: var(--primary); pointer-events: none; }
 
 /* ---- footer actions: the one dashed control per section ---- */
 .dashed {
-  width: 100%; height: 32px; border: 1px dashed var(--border); border-radius: 7px; background: transparent;
-  font-size: 11px; font-weight: 500; color: var(--primary);
+  width: 100%; height: 32px; border: 1px dashed var(--dashed); border-radius: var(--radius-dashed); background: transparent;
+  font-size: 11px; font-weight: 500; color: var(--accent-link);
   transition: background-color 120ms ease-out, border-color 120ms ease-out;
 }
 .dashed:hover { border-color: var(--primary); background: var(--accent); }
 .pick {
-  flex: 1; min-width: 0; height: 24px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px;
-  background: transparent; font-family: var(--font-mono); font-size: 11.5px; color: var(--foreground);
+  flex: 1; min-width: 0; height: 24px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--radius-tab);
+  background: var(--field); font-family: var(--font-mono); font-size: 11.5px; color: var(--foreground);
 }
 .rule-input, .rename {
-  width: 100%; height: 28px; padding: 0 8px; border: 1px solid var(--input); border-radius: 6px;
-  background: var(--card); font-family: var(--font-mono); font-size: 11.5px; outline: none;
+  width: 100%; height: 28px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--radius-tab);
+  background: var(--field); font-family: var(--font-mono); font-size: 11.5px; outline: none;
 }
-.rule-input:focus-visible, .rename:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
+.rule-input:focus-visible, .rename:focus-visible { border-color: var(--primary); background: var(--card); }
 .confirm { display: flex; align-items: center; gap: 8px; padding: 6px 2px; font-size: 11px; line-height: 1.35; }
 
 /* ---- popovers (SPEC §4.8) ---- */
 .backdrop { position: fixed; inset: 0; z-index: 19; }
 .menu {
   position: fixed; z-index: 60; padding: 6px;
-  border: 1px solid var(--border); border-radius: 8px; background: var(--popover);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.10);
+  border: 1px solid var(--field-border); border-radius: var(--radius-popover); background: var(--popover);
+  box-shadow: var(--shadow-popover);
 }
-.menu hr { margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
+.menu hr { margin: 4px 0; border: 0; border-top: 1px solid var(--section-border); }
 .item {
   display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 9px; border: 0; border-radius: 5px;
   background: transparent; font-size: 12px; color: var(--popover-foreground); text-align: left;
@@ -646,10 +636,10 @@ function onPick(event: Event) {
 .item:hover:not(:disabled) { background: var(--accent); }
 .item:disabled { opacity: 0.4; }
 .item.danger { color: var(--destructive); }
-.key { font-family: var(--font-mono); font-size: 10px; color: var(--muted-foreground); }
+.key { font-family: var(--font-mono); font-size: 10px; color: var(--meta-foreground); }
 
-.menu input { width: 100%; height: 28px; padding: 0 8px; border: 1px solid var(--input); border-radius: 6px; background: var(--card); font-size: 12px; outline: none; }
-.menu input:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
+.menu input { width: 100%; height: 28px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--radius-tab); background: var(--field); font-size: 12px; outline: none; }
+.menu input:focus-visible { border-color: var(--primary); background: var(--card); }
 .menu ul { max-height: 260px; margin: 6px 0 0; padding: 0; overflow: auto; list-style: none; }
 .menu li { display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 6px; border-radius: 5px; cursor: default; }
 .menu li:hover:not(.off) { background: var(--accent); }

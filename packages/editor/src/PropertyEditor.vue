@@ -283,44 +283,46 @@ watch(
 .attrs { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .field:has(.tall), .field:has(#prop-text), .field.wide { grid-column: 1 / -1; }
-.key { font-family: var(--font-sans); font-size: 9px; font-weight: 450; color: var(--muted-foreground); }
-.bound { color: var(--info); }
+.key { font-family: var(--font-sans); font-size: 9px; font-weight: 450; color: var(--muted-foreground-2); }
+.bound { color: var(--accent-link); }
 .line { display: flex; align-items: center; gap: 5px; min-width: 0; }
+/* Filled, borderless — focus swaps the border to --primary and the fill to --card (§3). */
 .ctl {
   flex: 1; min-width: 0; height: 26px; padding: 0 8px;
-  border: 1px solid var(--input); border-radius: 6px; background: var(--card);
+  border: 1px solid transparent; border-radius: var(--radius-tab); background: var(--field);
   font-family: var(--font-mono); font-size: 10.5px; font-weight: 450; color: var(--foreground); outline: none;
+  transition: background-color 120ms ease-out, border-color 120ms ease-out;
 }
-.ctl::placeholder { color: oklch(0.68 0.008 60); }
-.ctl:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
+.ctl::placeholder { color: var(--faint-foreground); }
+.ctl:focus-visible { border-color: var(--primary); background: var(--card); }
 .ctl.tall { height: auto; padding: 4px 8px; line-height: 1.5; }
 /* Prose is prose (CLAUDE.md); text with `{{ }}` in it is code and stays mono. */
 .ctl.prose { font-family: var(--font-sans); font-size: 11px; }
-.ctl.expr { color: var(--primary); }
-.swatch { flex: none; width: 26px; height: 26px; padding: 2px; border: 1px solid var(--input); border-radius: 6px; background: var(--card); }
-.check { width: 30px; height: 18px; appearance: none; border: 1px solid var(--input); border-radius: 9px; background: var(--muted); transition: background-color 120ms ease-out; }
+.ctl.expr { color: var(--accent-link); }
+.swatch { flex: none; width: 26px; height: 26px; padding: 2px; border: 1px solid var(--field-border); border-radius: var(--radius-tab); background: var(--card); }
+.check { width: 30px; height: 18px; appearance: none; border: 1px solid var(--field-border); border-radius: 9px; background: var(--field); transition: background-color 120ms ease-out; }
 .check:checked { background: var(--primary); }
 .pick {
   flex: none; width: 26px; height: 26px; display: grid; place-items: center;
-  border: 1px solid var(--input); border-radius: 6px; background: var(--card);
-  font-family: var(--font-mono); font-size: 10px; font-weight: 600; color: var(--primary);
+  border: 1px solid var(--field-border); border-radius: var(--radius-tab); background: var(--card);
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600; color: var(--accent-link);
   transition: background-color 120ms ease-out, border-color 120ms ease-out;
 }
 .pick:hover { border-color: var(--primary); background: var(--accent); }
 .add { grid-column: 1 / -1; }
-.more { border: 0; background: transparent; padding: 0; font-family: var(--font-sans); font-size: 10.5px; font-weight: 500; color: var(--primary); }
+.more { border: 0; background: transparent; padding: 0; font-family: var(--font-sans); font-size: 10.5px; font-weight: 500; color: var(--accent-link); }
 .more:hover { text-decoration: underline; }
 
 /* Popover shell — SPEC §4.8, the same one Layers uses. */
 .backdrop { position: fixed; inset: 0; z-index: 19; }
 .menu {
   position: fixed; z-index: 60; width: 260px; padding: 6px;
-  border: 1px solid var(--border); border-radius: 8px; background: var(--popover);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.10);
+  border: 1px solid var(--field-border); border-radius: var(--radius-popover); background: var(--popover);
+  box-shadow: var(--shadow-popover);
 }
 .menu.at-add { position: absolute; left: 0; bottom: 22px; }
-.menu input { width: 100%; height: 26px; padding: 0 8px; border: 1px solid var(--input); border-radius: 6px; background: var(--card); font-family: var(--font-mono); font-size: 11px; outline: none; }
-.menu input:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
+.menu input { width: 100%; height: 26px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--radius-tab); background: var(--field); font-family: var(--font-mono); font-size: 11px; outline: none; }
+.menu input:focus-visible { border-color: var(--primary); background: var(--card); }
 .menu ul { max-height: 260px; margin: 4px 0 0; padding: 0; overflow: auto; list-style: none; }
 .menu li, .menu .item {
   display: flex; align-items: center; gap: 8px; width: 100%; height: 26px; padding: 0 9px;
@@ -329,6 +331,6 @@ watch(
 }
 .menu li:hover, .menu .item:hover { background: var(--accent); }
 .menu li.none { color: var(--muted-foreground); }
-.menu .hint { margin-left: auto; font-size: 10px; color: var(--muted-foreground); }
+.menu .hint { margin-left: auto; font-size: 10px; color: var(--meta-foreground); }
 .menu .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

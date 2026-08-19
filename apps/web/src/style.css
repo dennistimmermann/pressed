@@ -13,8 +13,8 @@
 @import "@fontsource/ibm-plex-mono/500.css";
 @import "@fontsource/ibm-plex-mono/600.css";
 
-/* The design tokens. Verbatim copy of docs/design/spec/tokens.css — edit that file, not
-   this copy, and keep the two identical. It owns every colour, radius and font in the app. */
+/* The design tokens. Copy of docs/design/handoff-visual/spec/tokens.css plus the shadcn/app
+   names it omits — see the header of that file. It owns every colour, radius and font. */
 @import "./tokens.css";
 
 @custom-variant dark (&:is(.dark *));
@@ -84,5 +84,47 @@
   body {
     @apply bg-background text-foreground font-sans;
     font-size: 13px;
+  }
+}
+
+@layer components {
+  /**
+   * The ink layer (VISUAL-SPEC §2): the top bar, the file row and the status bar. The class
+   * carries the foreground scale only — each row paints its own surface, because they are
+   * two different inks. Everything under it that reads a text/line token gets the ink variant
+   * for free, so no component has to know it is sitting on ink.
+   *
+   * `--muted-foreground-2` deliberately keeps its light value: ink troughs hold *white* pills,
+   * and the text inside a pill is back on a card surface.
+   */
+  .on-ink {
+    color: var(--ink-foreground);
+    --foreground: var(--ink-foreground);
+    --card-foreground: var(--ink-foreground);
+    --muted-foreground: var(--ink-muted-2);
+    --meta-foreground: var(--ink-faint);
+    --faint-foreground: var(--ink-faint);
+    --accent-link: var(--ink-link);
+    --destructive: var(--ink-destructive);
+    --warning: var(--ink-warning);
+    --warning-foreground: var(--ink-warning);
+    --border: var(--ink-divider);
+    --section-border: var(--ink-divider);
+    --hairline: var(--ink-divider);
+    --input: var(--ink-control-border);
+    --field-border: var(--ink-control-border);
+    --field: var(--ink-control);
+    --muted: var(--ink-well);
+  }
+
+  /**
+   * A pane card (VISUAL-SPEC §1 level 3). The tray does all the separating, so a card has no
+   * border — one shadow, one radius, and `overflow: hidden` so the status strip's corners clip.
+   */
+  .pane-card {
+    background: var(--card);
+    border-radius: var(--card-radius);
+    box-shadow: var(--card-shadow);
+    overflow: hidden;
   }
 }

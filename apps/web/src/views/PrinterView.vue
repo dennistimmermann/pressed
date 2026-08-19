@@ -25,7 +25,7 @@ onMounted(refreshDevice)
       <label class="eyebrow" for="printer-backend">Printer</label>
       <select
         id="printer-backend" v-model="printerId"
-        class="h-8 w-[300px] rounded-[6px] border border-input bg-card px-2 text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        class="h-8 w-[300px] rounded-[var(--radius-tab)] border border-transparent bg-muted px-2 text-[12px] outline-none focus:border-primary focus:bg-card"
       >
         <option v-for="p in PRINTERS" :key="p.id" :value="p.id">{{ p.label }}</option>
       </select>
@@ -35,13 +35,13 @@ onMounted(refreshDevice)
       <span class="font-mono text-[11.5px]" :class="printer.deviceStatus.claimed ? 'text-[var(--ok)]' : 'text-muted-foreground'">
         {{ printer.deviceStatus.claimed ? '●' : '○' }} {{ printer.deviceStatus.label }}
       </span>
-      <button type="button" class="h-8 rounded-[6px] border border-border px-2.5 text-[12px] hover:bg-muted" @click="connectDevice">
+      <button type="button" class="h-8 rounded-[var(--radius-button)] border border-input px-2.5 text-[12px] hover:bg-muted" @click="connectDevice">
         Connect
       </button>
       <span class="font-mono text-[10.5px] text-muted-foreground">USB printer class devices only</span>
     </div>
 
-    <div class="w-fit rounded-[8px] border border-border p-3">
+    <div class="w-fit rounded-[var(--radius-dashed)] border border-input p-3">
       <p class="eyebrow mb-2">Profile — K30F</p>
       <dl class="grid grid-cols-[auto_auto] gap-x-4 gap-y-1">
         <template v-for="[key, value] in PROFILE" :key="key">

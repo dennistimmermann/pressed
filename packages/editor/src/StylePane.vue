@@ -185,37 +185,39 @@ const value = (e: Event) => (e.target as HTMLInputElement).value
 .gname {
   grid-column: 1 / -1; margin-top: 3px;
   font-family: var(--font-sans); font-size: 9px; font-weight: 600; letter-spacing: 0.07em;
-  text-transform: uppercase; color: var(--muted-foreground);
+  text-transform: uppercase; color: var(--muted-foreground-2);
 }
 .gname:first-child { margin-top: 0; }
 .field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .field.span2 { grid-column: span 2; }
 .field.span3 { grid-column: 1 / -1; }
-.key { font-family: var(--font-sans); font-size: 9px; font-weight: 450; color: var(--muted-foreground); }
+.key { font-family: var(--font-sans); font-size: 9px; font-weight: 450; color: var(--muted-foreground-2); }
+/* Filled, borderless — focus swaps the border to --primary and the fill to --card (§3). */
 .ctl, .unit, .swatch {
-  height: 25px; min-width: 0; border: 1px solid var(--input); border-radius: 5px; background: var(--card);
+  height: 25px; min-width: 0; border: 1px solid transparent; border-radius: var(--radius-tab); background: var(--field);
   font-family: var(--font-mono); font-size: 10.5px; font-weight: 450; padding: 0 7px; color: var(--foreground);
+  transition: background-color 120ms ease-out, border-color 120ms ease-out;
 }
 .ctl { width: 100%; }
-.ctl::placeholder { color: oklch(0.68 0.008 60); }
-.ctl:focus-visible, .unit:focus-visible, .swatch:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ring); }
+.ctl::placeholder { color: var(--faint-foreground); }
+.ctl:focus-visible, .unit:focus-visible, .swatch:focus-visible { outline: none; border-color: var(--primary); background: var(--card); }
 .num, .colour { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.unit { flex: none; width: 38px; padding: 0 2px; font-size: 8.5px; color: oklch(0.68 0.008 60); }
+.unit { flex: none; width: 38px; padding: 0 2px; font-size: 8.5px; color: var(--faint-foreground); }
 .swatch { flex: none; width: 25px; padding: 2px; }
 .row { flex-direction: row; gap: 6px; }
 .row .prop { flex: none; width: 44%; }
 .none { grid-column: 1 / -1; margin: 0; font-size: 11px; color: var(--muted-foreground); }
-.seg { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--border); border-radius: 5px; background: var(--muted); }
+.seg { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--field-border); border-radius: var(--radius-tab); background: var(--field); }
 .seg button {
   min-width: 24px; height: 19px; padding: 0 5px; border: 0; border-radius: 4px; background: transparent;
   font-family: var(--font-mono); font-size: 10.5px; color: var(--muted-foreground);
   transition: background-color 120ms ease-out, color 120ms ease-out;
 }
-.seg button.on { background: var(--accent); color: var(--accent-foreground); box-shadow: inset 0 0 0 1px var(--accent-border); }
+.seg button.on { background: var(--accent); color: var(--accent-foreground); box-shadow: inset 0 0 0 1px var(--primary); }
 /* Plain text action, like every other "one more thing" in the app. */
 .more {
   grid-column: 1 / -1; justify-self: start; margin-top: 2px; border: 0; background: transparent; padding: 0;
-  font-family: var(--font-sans); font-size: 10.5px; font-weight: 500; color: var(--primary);
+  font-family: var(--font-sans); font-size: 10.5px; font-weight: 500; color: var(--accent-link);
 }
 .more:hover { text-decoration: underline; }
 </style>

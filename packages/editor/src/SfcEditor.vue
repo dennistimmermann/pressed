@@ -235,7 +235,8 @@ onMounted(() => {
       const css = getComputedStyle(flashNode)
       flashNode.animate([{ background: css.getPropertyValue('--box-flash') }, { background: css.getPropertyValue('--box-rest') }], timing)
       // The ring goes darker yellow → grey alongside; the drop shadow stays constant.
-      const ring = (c: string) => `inset 0 0 0 1px ${c}, 0 1px 3px rgb(0 0 0 / 0.08), 0 4px 12px -4px rgb(0 0 0 / 0.14)`
+      const shadow = getComputedStyle(document.documentElement).getPropertyValue('--box-shadow')
+      const ring = (c: string) => `inset 0 0 0 1px ${c}, ${shadow}`
       const bcss = getComputedStyle(boxNode)
       boxNode.animate([{ boxShadow: ring(bcss.getPropertyValue('--ring-flash')) }, { boxShadow: ring(bcss.getPropertyValue('--ring-rest')) }], timing)
     },
@@ -443,7 +444,7 @@ defineExpose(handle)
   font-size: 11px;
 }
 .sprint-editor .sprint-empty .klass {
-  color: oklch(0.5 0.14 40);
+  color: var(--accent-link);
 }
 
 .sprint-editor .sprint-element-bold {
@@ -454,12 +455,14 @@ defineExpose(handle)
   overflow: hidden;
   pointer-events: none;
 }
+/* The block box is inside the editor text, not chrome — VISUAL-SPEC §3 names its own ring
+   and shadow, so it is the one thing besides the four chrome shadows that casts one. */
 .sprint-editor .sprint-element-box {
   position: absolute;
-  border-radius: 6px;
-  --ring-flash: oklch(0.78 0.15 90);
-  --ring-rest: var(--border);
-  box-shadow: inset 0 0 0 1px var(--ring-rest), 0 1px 3px rgb(0 0 0 / 0.08), 0 4px 12px -4px rgb(0 0 0 / 0.14);
+  border-radius: var(--radius-tab);
+  --ring-flash: var(--box-flash);
+  --ring-rest: var(--box-ring);
+  box-shadow: inset 0 0 0 1px var(--ring-rest), var(--box-shadow);
 }
 .sprint-editor .sprint-element-box > div {
   position: absolute;
@@ -467,15 +470,15 @@ defineExpose(handle)
   border-radius: inherit;
 }
 /* Above the text, yet reads as "white paper behind it": colour-dodge with a dark grey source
-   pushes near-white backdrop pixels to pure white and leaves dark text almost untouched. */
+   pushes near-white backdrop pixels to pure white and leaves dark text almost untouched.
+   #101010 / #f0f0f0 are blend-mode operands, not palette colours — they have no token. */
 .sprint-editor .sprint-element-box > .paper {
   background: #101010;
   mix-blend-mode: color-dodge;
 }
 /* The flash multiplies a light yellow in and fades to white (= no-op under multiply). */
 .sprint-editor .sprint-element-box > .flash {
-  --box-rest: #fff;
-  --box-flash: oklch(0.96 0.07 95);
+  --box-rest: var(--card);
   background: var(--box-rest);
   mix-blend-mode: multiply;
 }
@@ -485,8 +488,7 @@ defineExpose(handle)
   mix-blend-mode: color-burn;
 }
 :global(.dark) .sprint-editor .sprint-element-box > .flash {
-  --box-rest: #000;
-  --box-flash: oklch(0.35 0.06 95);
+  --box-rest: var(--sheet-ink);
   mix-blend-mode: screen;
 }
 

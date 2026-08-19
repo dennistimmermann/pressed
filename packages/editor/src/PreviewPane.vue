@@ -62,7 +62,10 @@ const emit = defineEmits<{
 }>()
 
 const PX_PER_MM = 96 / 25.4
-const ACCENT = 'oklch(0.58 0.15 40)' // literal: the frame is never themed (CLAUDE.md invariant 3)
+// Literal, never a token: nothing from the app's palette may reach inside the frame
+// (CLAUDE.md invariant 3). It is the value of --primary written out by hand, because
+// VISUAL-SPEC §4 asks the in-scope outline to read as the accent.
+const ACCENT = '#0099ff'
 
 // ---------------------------------------------------------------- the document
 
@@ -465,13 +468,14 @@ watch(
   padding: 16px;
 }
 
-/* The sheet is white, always — the rendered label is never themed (invariant 3). */
+/* The sheet is white, always — the rendered label is never themed (invariant 3). Its edge
+   and shadow are drawn *outside* the frame, so they are the `--sheet-*` tokens. */
 .sheet {
   position: relative;
   overflow: hidden;
-  background: #fff;
-  border: 1px solid oklch(0.75 0.01 60);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.1), 0 12px 30px -12px rgb(0 0 0 / 0.28);
+  background: var(--sheet);
+  border: 1px solid var(--sheet-border);
+  box-shadow: var(--sheet-shadow);
 }
 .sheet.empty {
   border-style: dashed;
@@ -498,7 +502,7 @@ watch(
   white-space: nowrap;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 10.5px;
-  color: var(--muted-foreground);
+  color: var(--meta-foreground);
   text-align: center;
 }
 .bar {
@@ -520,8 +524,8 @@ watch(
   align-items: center;
   gap: 4px;
   padding: 4px 8px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-tab);
   background: var(--card);
   font-size: 10px;
   font-weight: 450;
@@ -530,12 +534,12 @@ watch(
   transition: background-color 120ms ease-out, border-color 120ms ease-out;
 }
 button.chip:hover {
-  background: var(--muted);
+  background: var(--field);
 }
 /* Selection is --accent plus its border, never a fill (invariant 1). */
 .chip.on {
   background: var(--accent);
-  border-color: var(--accent-border);
+  border-color: var(--primary);
   color: var(--accent-foreground);
 }
 .chip.sq {
@@ -565,12 +569,12 @@ button.chip:hover {
 
 .crumb {
   padding: 5px 9px;
-  border-radius: 6px;
+  border-radius: var(--radius-tab);
   font-size: 10.5px;
 }
 .crumb.scoped {
   background: var(--accent);
-  border-color: var(--accent-border);
+  border-color: var(--primary);
   color: var(--accent-foreground);
 }
 .sep {
@@ -578,7 +582,7 @@ button.chip:hover {
   opacity: 0.7;
 }
 .crumb .cls {
-  color: var(--primary);
+  color: var(--accent-link);
 }
 .crumb.scoped .cls {
   color: inherit;

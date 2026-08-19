@@ -79,38 +79,38 @@ function commitRename(id: string, e: Event) {
   <!-- m-auto: Tailwind's preflight zeroes the margin a native modal centres itself with. -->
   <dialog
     ref="dialog"
-    class="m-auto h-[520px] w-[760px] rounded-[10px] border border-border bg-popover p-0 text-popover-foreground shadow-[0_18px_40px_-14px_rgb(0_0_0/.30)] backdrop:bg-black/35"
+    class="m-auto h-[520px] w-[760px] rounded-[var(--card-radius)] border border-input bg-popover p-0 text-popover-foreground shadow-[var(--shadow-popover)] backdrop:bg-black/35"
     aria-label="Manage templates"
     @close="emit('close')"
   >
     <div class="flex h-full flex-col">
-      <header class="flex flex-none items-center gap-2 border-b border-border px-3 py-2">
+      <header class="flex flex-none items-center gap-2 border-b border-[var(--section-border)] px-3 py-2">
         <h2 class="text-[13px] font-semibold">Templates</h2>
         <label class="sr-only" for="manage-search">Search templates</label>
         <input
           id="manage-search" v-model="query" type="search" placeholder="Search"
-          class="ml-2 h-[30px] w-[180px] rounded-[6px] border border-input bg-card px-2 text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          class="ml-2 h-[30px] w-[180px] rounded-[var(--radius-tab)] border border-transparent bg-muted px-2 text-[12px] outline-none focus:border-primary focus:bg-card"
         >
         <span class="flex-1" />
         <!-- Ghost, not filled: Print is the only filled button in the app (invariant 1). -->
-        <label class="flex h-8 cursor-pointer items-center rounded-[6px] border border-border px-2.5 text-[12px] hover:bg-muted">
+        <label class="flex h-8 cursor-pointer items-center rounded-[var(--radius-button)] border border-input px-2.5 text-[12px] hover:bg-muted">
           Import .vue / .zip
           <input type="file" accept=".vue,.zip" multiple class="sr-only" @change="onImport">
         </label>
-        <button type="button" class="h-8 rounded-[6px] border border-border px-2.5 text-[12px] hover:bg-muted" @click="emit('create')">
+        <button type="button" class="h-8 rounded-[var(--radius-button)] border border-input px-2.5 text-[12px] hover:bg-muted" @click="emit('create')">
           New template
         </button>
-        <button type="button" aria-label="Close" class="ml-1 size-8 rounded-[6px] text-muted-foreground hover:bg-muted" @click="emit('close')">
+        <button type="button" aria-label="Close" class="ml-1 size-8 rounded-[var(--radius-button)] text-muted-foreground hover:bg-muted" @click="emit('close')">
           ✕
         </button>
       </header>
 
       <div class="flex min-h-0 flex-1">
-        <nav class="flex w-[176px] flex-none flex-col border-r border-border p-2" aria-label="Filter">
+        <nav class="flex w-[176px] flex-none flex-col border-r border-[var(--section-border)] p-2" aria-label="Filter">
           <button
             v-for="f in filters" :key="f.key" type="button"
-            class="flex items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-[12px] transition-colors duration-120 ease-out"
-            :class="filter === f.key ? 'bg-accent text-accent-foreground ring-1 ring-inset ring-accent-border' : 'hover:bg-muted'"
+            class="flex items-center gap-2 rounded-[var(--radius-tab)] px-2 py-1.5 text-left text-[12px] transition-colors duration-120 ease-out"
+            :class="filter === f.key ? 'bg-accent text-accent-foreground ring-1 ring-inset ring-primary' : 'hover:bg-muted'"
             @click="filter = f.key"
           >
             <span class="truncate">{{ f.label }}</span>
@@ -125,11 +125,11 @@ function commitRename(id: string, e: Event) {
           <ul class="flex flex-wrap gap-2.5">
             <li
               v-for="item in shown" :key="item.id"
-              class="relative w-[170px] rounded-[8px] border border-border bg-card p-2"
+              class="relative w-[170px] rounded-[var(--radius-dashed)] border border-input bg-card p-2"
             >
               <button
                 type="button"
-                class="block h-[74px] w-full overflow-hidden rounded-[6px] border border-border bg-background"
+                class="block h-[74px] w-full overflow-hidden rounded-[var(--radius-tab)] border border-input bg-[var(--canvas)]"
                 :aria-label="`Open ${item.name}`"
                 @click="emit('open', item.id)"
               >
@@ -145,7 +145,7 @@ function commitRename(id: string, e: Event) {
               <input
                 v-if="renamingId === item.id"
                 :value="item.name" autofocus
-                class="mt-1.5 h-[26px] w-full rounded-[5px] border border-input bg-card px-1.5 text-[11.5px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                class="mt-1.5 h-[26px] w-full rounded-[var(--radius-tab)] border border-transparent bg-muted px-1.5 text-[11.5px] outline-none focus:border-primary focus:bg-card"
                 @keydown.enter="commitRename(item.id, $event)"
                 @blur="commitRename(item.id, $event)"
               >
@@ -166,7 +166,7 @@ function commitRename(id: string, e: Event) {
                 </button>
                 <div
                   v-if="menuId === item.id"
-                  class="absolute top-7 right-0 z-10 w-[132px] rounded-[8px] border border-border bg-popover p-1 shadow-[0_18px_40px_-14px_rgb(0_0_0/.30)]"
+                  class="absolute top-7 right-0 z-10 w-[132px] rounded-[var(--radius-popover)] border border-input bg-popover p-1 shadow-[var(--shadow-popover)]"
                 >
                   <button type="button" class="block w-full rounded-[5px] px-2 py-1 text-left text-[12px] hover:bg-muted" @click="menuId = null; emit('duplicate', item.id)">Duplicate</button>
                   <button v-if="item.kind === 'mine'" type="button" class="block w-full rounded-[5px] px-2 py-1 text-left text-[12px] hover:bg-muted" @click="menuId = null; renamingId = item.id">Rename</button>

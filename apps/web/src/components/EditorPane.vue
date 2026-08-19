@@ -78,19 +78,19 @@ const editorProps = computed(() => ({
 <template>
   <div class="flex h-full min-h-0 flex-col">
     <!-- The block tabs appear with the code they switch between, never above the panes (SPEC §7). -->
-    <header class="flex h-[40px] flex-none items-center gap-2 border-b border-border bg-[oklch(0.975_0.003_90)] px-3 dark:bg-muted">
+    <header class="flex h-[40px] flex-none items-center gap-2 border-b border-[var(--section-border)] px-3">
       <BlockTabs
         :model="tabs" :active="editor.activeTab" :scope="editor.activeTab.scope" :badges="badges"
         @select="switchTab" @add="addBlock"
       />
       <span class="flex-1" />
       <button type="button" class="text-[11px] text-muted-foreground transition-colors hover:text-foreground" @click="formatBlock">Format</button>
-      <span class="font-mono text-[10px] text-muted-foreground">⇧⌥F · ⌥1…9 · ⌘⌥[ ]</span>
+      <span class="font-mono text-[10px] text-[var(--meta-foreground)]">⇧⌥F · ⌥1…9 · ⌘⌥[ ]</span>
     </header>
 
     <SfcEditor v-bind="editorProps" class="min-h-0 flex-1" />
 
-    <footer class="flex h-[26px] flex-none items-center border-t border-border px-3 font-mono text-[10px] text-muted-foreground">
+    <footer class="flex h-[26px] flex-none items-center border-t border-[var(--section-border)] px-3 font-mono text-[10px] text-[var(--meta-foreground)]">
       {{ FOOTER[kind] }}
     </footer>
   </div>

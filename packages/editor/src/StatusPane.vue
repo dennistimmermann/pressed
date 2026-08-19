@@ -78,11 +78,15 @@ function where(m: Message): string {
 </template>
 
 <style scoped>
+/* The ink foot of the right-hand column (VISUAL-SPEC §2): it lives *inside* the Inspector
+   card, flush to the bottom, and the card's `overflow: hidden` clips it to the 14px corners.
+   The host adds `.on-ink`, which re-points the text tokens the rules below read. */
 .pane {
   display: flex;
   flex-direction: column;
   max-height: 100%;
   min-height: 0;
+  background: var(--ink);
 }
 .head {
   display: flex;
@@ -93,7 +97,6 @@ function where(m: Message): string {
   height: 30px;
   padding: 0 10px;
   border: 0;
-  border-bottom: 1px solid var(--border);
   background: transparent;
   text-align: left;
 }
@@ -118,7 +121,7 @@ function where(m: Message): string {
   line-height: 1;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--muted-foreground);
+  color: var(--ink-muted);
 }
 .origin {
   min-width: 0;
@@ -130,27 +133,32 @@ function where(m: Message): string {
   color: var(--muted-foreground);
 }
 
+/* The expanded list keeps the ink surface; rows separate with a divider, not with a tint —
+   the light-surface pastels vanish on ink (VISUAL-SPEC §2). */
 .rows {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px;
   min-height: 0;
   overflow: auto;
+  border-top: 1px solid var(--ink-border-2);
 }
 
 .row {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 2px 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
+  padding: 6px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--ink-divider);
+  background: transparent;
   text-align: left;
-  border: none;
   transition: background-color 120ms ease-out;
 }
+.row:last-child {
+  border-bottom: 0;
+}
 button.row:hover {
-  filter: brightness(0.98);
+  background: var(--ink-2);
 }
 .tag {
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -161,58 +169,24 @@ button.row:hover {
 }
 .text {
   font-size: 11px;
-  color: var(--foreground);
+  color: var(--ink-foreground);
 }
 .loc {
   grid-column: 2;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 10px;
-  color: var(--muted-foreground);
+  color: var(--meta-foreground);
 }
 
-/* Colours are design §3.6's table; they are label-agnostic literals, not app tokens. */
-.fault {
-  background: oklch(0.975 0.015 25);
-}
+/* Ink-safe state colours (design §3.6's table, in its ink register). */
 .fault .tag {
-  color: oklch(0.5 0.17 25);
-}
-.purity {
-  background: oklch(0.98 0.02 85);
+  color: var(--ink-destructive);
 }
 .purity .tag {
-  color: oklch(0.52 0.1 75);
+  color: var(--ink-warning);
 }
-.ok {
-  background: oklch(0.975 0.008 150);
-}
-.ok .tag {
-  color: oklch(0.45 0.08 150);
-}
-/* Neutral: an info row is not a fault, so it borrows the app's own muted surface. */
-.info {
-  background: var(--muted);
-}
+.ok .tag,
 .info .tag {
-  color: var(--muted-foreground);
-}
-
-:global(.dark) .fault {
-  background: oklch(0.27 0.04 25);
-}
-:global(.dark) .fault .tag {
-  color: oklch(0.75 0.15 25);
-}
-:global(.dark) .purity {
-  background: oklch(0.28 0.03 85);
-}
-:global(.dark) .purity .tag {
-  color: oklch(0.82 0.09 75);
-}
-:global(.dark) .ok {
-  background: oklch(0.26 0.03 150);
-}
-:global(.dark) .ok .tag {
-  color: oklch(0.75 0.1 150);
+  color: var(--ink-muted-2);
 }
 </style>

@@ -81,10 +81,10 @@ const num = (event: Event) => {
   flex-direction: column;
   gap: 9px;
   padding: 11px 12px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-popover);
   background: var(--popover);
-  box-shadow: 0 18px 40px -14px rgb(0 0 0 / 0.3);
+  box-shadow: var(--shadow-popover);
 }
 .head {
   display: flex;
@@ -98,7 +98,7 @@ const num = (event: Event) => {
   font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--muted-foreground);
+  color: var(--muted-foreground-2);
 }
 
 .row {
@@ -118,7 +118,7 @@ const num = (event: Event) => {
   font-family: var(--font-sans, system-ui, sans-serif);
   font-size: 10.5px;
   font-weight: 500;
-  color: var(--muted-foreground);
+  color: var(--muted-foreground-2);
 }
 .key em {
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -133,9 +133,9 @@ select {
   box-sizing: border-box;
   height: 29px;
   padding: 0 9px;
-  border: 1px solid var(--input);
-  border-radius: 6px;
-  background: var(--card);
+  border: 1px solid transparent;
+  border-radius: var(--radius-tab);
+  background: var(--field);
   color: var(--foreground);
   /* Measurements are machine text — mono, always (design §1). */
   font: 450 11.5px var(--font-mono, ui-monospace, monospace);
@@ -152,9 +152,17 @@ textarea {
   resize: none;
 }
 
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  background: var(--card);
+}
+
 .foot {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 10px;
-  color: var(--muted-foreground);
+  color: var(--meta-foreground);
 }
 </style>

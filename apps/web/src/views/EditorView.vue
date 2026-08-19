@@ -354,10 +354,16 @@ async function onCreate() {
       @save-as="saveAsName = `${nameOf(editor.templateId)} copy`"
     />
 
-    <div class="flex min-h-0 flex-1" :class="stacked ? 'flex-col overflow-y-auto' : ''">
+    <!-- The tray (VISUAL-SPEC §1): grey ground, 8px of padding, cards floating on it. It does
+         all the separating, so no pane carries a border. Between two cards the gutter is the
+         splitter; where there is nothing to drag (stacked, Preview over Inspector) it is a gap. -->
+    <div
+      class="flex min-h-0 flex-1 bg-[var(--tray)] p-[var(--tray-gutter)]"
+      :class="stacked ? 'flex-col gap-[var(--tray-gutter)] overflow-y-auto' : ''"
+    >
       <!-- Layers: every mode, every block. Nothing to show is an empty state, not a missing pane. -->
       <div
-        class="min-w-0 flex-none overflow-hidden" :class="stacked && 'order-2 border-t border-border'"
+        class="pane-card min-w-0 flex-none" :class="stacked && 'order-2'"
         :style="stacked ? undefined : { width: `${settings.layersWidth}px` }"
       >
         <LayersPane v-bind="layersProps" class="h-full" />
@@ -376,7 +382,7 @@ async function onCreate() {
           stacked ? 'order-1 h-[55vh] flex-none' : 'flex-1',
         ]"
       >
-        <div v-show="mode !== 'code'" class="min-h-0 min-w-0" :style="canvasStyle">
+        <div v-show="mode !== 'code'" class="pane-card min-h-0 min-w-0" :style="canvasStyle">
           <PreviewPane
             v-bind="canvasProps" handles :zoom="settings.zoomCanvas" class="h-full"
             @update:zoom="settings.zoomCanvas = $event"
@@ -386,28 +392,29 @@ async function onCreate() {
           v-if="mode === 'split' && !stacked" v-model:size="settings.splitSize"
           :dir="settings.splitSideBySide ? 'x' : 'y'" :min="160" :max="splitMax"
         />
-        <div v-show="mode !== 'blocks'" class="min-h-0 min-w-0 flex-1">
+        <div v-show="mode !== 'blocks'" class="pane-card min-h-0 min-w-0 flex-1">
           <EditorPane class="h-full" />
         </div>
       </div>
 
       <Splitter v-if="!stacked" v-model:size="settings.inspectorWidth" :min="300" :max="460" invert />
       <!-- Inspector + Status: identical in every mode, plus the Preview when the canvas has
-           left the middle column (SPEC §2). -->
+           left the middle column (SPEC §2). The Preview is its own card; Status sits *inside*
+           the Inspector card, flush to the bottom, its corners clipped by the card. -->
       <div
-        class="flex min-w-0 flex-none flex-col overflow-hidden border-border"
-        :class="stacked ? 'order-3 border-t' : 'border-l'"
+        class="flex min-w-0 flex-none flex-col gap-[var(--tray-gutter)]"
+        :class="stacked && 'order-3'"
         :style="stacked ? undefined : { width: `${settings.inspectorWidth}px` }"
       >
-        <div v-if="mode === 'code'" class="h-[240px] flex-none border-b border-border">
+        <div v-if="mode === 'code'" class="pane-card h-[240px] flex-none">
           <PreviewPane
             v-bind="canvasProps" :footnote="footnote" :zoom="settings.zoomPreview" class="h-full"
             @update:zoom="settings.zoomPreview = $event"
           />
         </div>
-        <div class="min-h-0 flex-1" :class="stacked && 'h-[280px] flex-none'"><InspectorPane class="h-full" /></div>
-        <div class="flex max-h-[40%] min-h-0 flex-none flex-col border-t border-border">
-          <StatusPane v-bind="statusProps" />
+        <div class="pane-card flex min-h-0 flex-1 flex-col" :class="stacked && 'h-[280px] flex-none'">
+          <div class="min-h-0 flex-1"><InspectorPane class="h-full" /></div>
+          <StatusPane v-bind="statusProps" class="on-ink max-h-[40%] flex-none" />
         </div>
       </div>
     </div>
@@ -415,24 +422,24 @@ async function onCreate() {
     <!-- Dirty confirm and save-as: inline, because a question is not an error dialog. -->
     <div
       v-if="pendingId || saveAsName !== null"
-      class="absolute top-[80px] left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-[8px] border border-border bg-popover px-3 py-2 shadow-[0_18px_40px_-14px_rgb(0_0_0/.30)]"
+      class="absolute top-[80px] left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-[var(--radius-popover)] border border-input bg-popover px-3 py-2 shadow-[var(--shadow-popover)]"
     >
       <template v-if="saveAsName !== null">
         <label class="text-[12px]" for="save-as-name">Save current as</label>
         <input
           id="save-as-name" v-model="saveAsName" autofocus
-          class="h-[28px] w-[180px] rounded-[6px] border border-input bg-card px-2 text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          class="h-[28px] w-[180px] rounded-[var(--radius-tab)] border border-transparent bg-muted px-2 text-[12px] outline-none focus:border-primary focus:bg-card"
           @keydown.enter="confirmSaveAs"
         >
-        <button type="button" class="h-[28px] rounded-[6px] border border-border px-2 text-[12px] hover:bg-muted" @click="confirmSaveAs">Save</button>
+        <button type="button" class="h-[28px] rounded-[var(--radius-button)] border border-input px-2 text-[12px] hover:bg-muted" @click="confirmSaveAs">Save</button>
         <button type="button" class="text-[12px] text-muted-foreground hover:text-foreground" @click="saveAsName = null">Cancel</button>
       </template>
       <template v-else>
         <span class="text-[12px]">{{ filename }} has unsaved changes.</span>
-        <button type="button" class="h-[28px] rounded-[6px] border border-border px-2 text-[12px] hover:bg-muted" @click="saveAsName = `${nameOf(editor.templateId)} copy`">
+        <button type="button" class="h-[28px] rounded-[var(--radius-button)] border border-input px-2 text-[12px] hover:bg-muted" @click="saveAsName = `${nameOf(editor.templateId)} copy`">
           Save as new template…
         </button>
-        <button type="button" class="h-[28px] rounded-[6px] border border-border px-2 text-[12px] hover:bg-muted" @click="save().then(confirmDiscard)">Save</button>
+        <button type="button" class="h-[28px] rounded-[var(--radius-button)] border border-input px-2 text-[12px] hover:bg-muted" @click="save().then(confirmDiscard)">Save</button>
         <button type="button" class="text-[12px] text-destructive hover:underline" @click="confirmDiscard">Discard</button>
         <button type="button" class="text-[12px] text-muted-foreground hover:text-foreground" @click="pendingId = null">Cancel</button>
       </template>

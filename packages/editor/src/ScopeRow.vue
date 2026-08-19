@@ -126,8 +126,10 @@ function commitRename() {
   gap: 9px;
   height: 42px;
   padding: 0 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--background);
+  border-bottom: 1px solid var(--scope-border);
+  /* Level 1 (VISUAL-SPEC §2): lighter than the ink rows above, darker than the cards below —
+     the only row where the surface rises as you go down. Do not darken it. */
+  background: var(--scope);
   white-space: nowrap;
 }
 .row > * {
@@ -144,9 +146,9 @@ function commitRename() {
   gap: 2px;
   min-width: 0;
   padding: 3px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--muted);
+  border: 1px solid var(--scope-well-border);
+  border-radius: var(--radius-trough);
+  background: var(--scope-well);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -157,7 +159,7 @@ function commitRename() {
   height: 26px;
   padding: 6px 11px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-tab);
   background: transparent;
   cursor: pointer;
   transition: background-color 120ms ease-out, box-shadow 120ms ease-out, color 120ms ease-out;
@@ -167,11 +169,11 @@ function commitRename() {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 12px;
   font-weight: 450;
-  color: oklch(0.45 0.01 60);
+  color: var(--muted-foreground);
 }
 .tab.on {
   background: var(--card);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.07);
+  box-shadow: var(--shadow-pill);
 }
 .tab.on .label {
   font-weight: 600;
@@ -202,9 +204,9 @@ function commitRename() {
 
 .hairline {
   width: 1px;
-  height: 18px;
+  height: 16px;
   margin: 0 5px;
-  background: var(--border);
+  background: var(--scope-border);
 }
 .eyebrow {
   padding-right: 3px;
@@ -213,7 +215,7 @@ function commitRename() {
   font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--muted-foreground);
+  color: var(--muted-foreground-2);
 }
 
 .badge {
@@ -232,15 +234,15 @@ function commitRename() {
   height: 26px;
   width: 12ch;
   padding: 0 9px;
-  border: 1px solid var(--input);
-  border-radius: 6px;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-tab);
   background: var(--card);
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 12px;
   outline: none;
 }
 .rename:focus-visible {
-  box-shadow: 0 0 0 2px var(--ring);
+  outline: none;
 }
 
 .text {
@@ -263,9 +265,11 @@ function commitRename() {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  color: var(--meta-foreground);
 }
 .back .key {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 10px;
+  color: var(--meta-foreground);
 }
 </style>

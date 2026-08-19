@@ -1,8 +1,11 @@
-/* copy of docs/design/spec/tokens.css — keep identical */
-/* sprint — design tokens (Vue + shadcn-vue).
-   Drop into the Tailwind v4 entry (src/style.css), after @import "tailwindcss".
-   Fonts: npm i @fontsource/ibm-plex-sans @fontsource/ibm-plex-mono
-          import "@fontsource/ibm-plex-sans/400.css" (450 500 600) + the mono equivalents.
+/* Copy of docs/design/handoff-visual/spec/tokens.css ("Ink chrome + card tray"), plus the
+   compatibility mappings the app and shadcn-vue still need — the handoff file omits every
+   shadcn name. Edit the handoff file, copy it here, keep the mappings below it.
+   This file no longer matches docs/design/spec/tokens.css: that one is the previous
+   (warm/oklch) pass and is superseded by the visual pass. See docs/design/deviations.md.
+
+   sprint — visual tokens, "Ink chrome + card tray" (mockup 2d).
+   Light mode only: dark mode is deliberately out of scope for this pass (VISUAL-SPEC §9).
    NOTE: these tokens are for the APP CHROME only. The rendered label document is always
    black on white — never let a token reach the label CSS. */
 
@@ -12,37 +15,124 @@
 }
 
 :root {
-  --background: oklch(0.968 0.004 90);
-  --foreground: oklch(0.22 0.012 60);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.22 0.012 60);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.22 0.012 60);
-  --muted: oklch(0.965 0.004 90);
-  --muted-foreground: oklch(0.52 0.01 60);
-  --border: oklch(0.90 0.006 90);
-  --input: oklch(0.88 0.006 90);
-  --ring: oklch(0.58 0.15 40);
-  --primary: oklch(0.58 0.15 40);
-  --primary-foreground: oklch(0.99 0.005 40);
-  --secondary: oklch(0.965 0.004 90);
-  --secondary-foreground: oklch(0.30 0.01 60);
-  --accent: oklch(0.955 0.028 40);
-  --accent-foreground: oklch(0.30 0.09 40);
-  --accent-border: oklch(0.88 0.05 40);
-  --destructive: oklch(0.58 0.17 25);
-  --destructive-foreground: oklch(0.99 0.005 25);
-  --warning: oklch(0.62 0.12 80);
-  --warning-bg: oklch(0.98 0.02 85);
-  --warning-border: oklch(0.89 0.03 85);
-  --warning-foreground: oklch(0.40 0.06 75);
-  --info: oklch(0.45 0.10 215);
-  --info-bg: oklch(0.955 0.012 200);
-  --ok: oklch(0.62 0.15 150);
-  --radius: 0.4rem;
-  --grid-dot: oklch(0.88 0.006 90);
+  /* ── level 0 · ink chrome (top bar, file row, status bar) ───────────────── */
+  --ink:                 #1b2740;   /* top bar, status bar */
+  --ink-2:               #20304e;   /* file row — one step lighter than --ink */
+  --ink-border:          #0d1626;   /* under the top bar */
+  --ink-border-2:        #16203a;   /* under the file row, above the status bar */
+  --ink-foreground:      #e7ecf5;   /* primary text on ink */
+  --ink-muted:           #b9c5da;   /* idle tab labels */
+  --ink-muted-2:         #a9b6ce;   /* secondary / status text */
+  --ink-faint:           #8a97b0;   /* mono meta, shortcut hints */
+  --ink-well:            #131e33;   /* trough behind tabs, sunk into ink */
+  --ink-well-border:     #2b3a58;
+  --ink-control:         #223252;   /* icon buttons, small bordered chips */
+  --ink-control-border:  #2f3f5f;
+  --ink-control-fg:      #c7d2e5;
+  --ink-divider:         #33425f;   /* 1px × 16px separators */
+  --ink-link:            #78c8ff;   /* accent text on ink */
+  --ink-destructive:     #ff9095;
+  --ink-warning:         #ffce6b;
+
+  /* ── level 1 · scope row — the pale step between chrome and work ────────── */
+  --scope:               #e9edf3;
+  --scope-border:        #cfd6e2;
+  --scope-well:          #dde3ec;   /* the scope trough */
+  --scope-well-border:   #cfd6e2;
+
+  /* ── level 2 · the tray (ground the cards float on) ─────────────────────── */
+  --tray:                #e4e4e4;
+  --tray-gutter:         8px;       /* padding of the tray + gap between cards */
+
+  /* ── level 3 · pane cards ──────────────────────────────────────────────── */
+  --card:                #ffffff;
+  --card-radius:         14px;
+  --card-shadow:         0 1px 2px rgba(0,0,0,.10), 0 10px 26px rgba(0,0,0,.07);
+
+  /* ── canvas (inside the Canvas / Preview card) ──────────────────────────── */
+  --canvas:              #f7f7f7;   /* lighter than --tray so the sheet stays brightest */
+  --canvas-dot:          #e0e0e0;
+  --canvas-dot-size:     16px;
+
+  /* ── text ───────────────────────────────────────────────────────────────── */
+  --foreground:          #111111;
+  --muted-foreground:    #555555;   /* idle tabs, plain actions */
+  --muted-foreground-2:  #666666;   /* eyebrows, field labels */
+  --meta-foreground:     #7b7b7b;   /* mono counts, shortcut hints */
+  --faint-foreground:    #8f8f8f;   /* units, the “–” of an unset field */
+
+  /* ── lines & fills inside a card ────────────────────────────────────────── */
+  --section-border:      #ededed;   /* between pane sections */
+  --hairline:            #efefef;   /* second-order divider */
+  --field-border:        #e5e5e5;
+  --field:               #f4f4f4;   /* filled field, no visible border */
+  --dashed:              #dcdcdc;   /* “add a thing here” outlines */
+
+  /* ── accent (one hue, three surfaces) ───────────────────────────────────── */
+  --primary:             #0099ff;   /* Print, selection outline, logo bar, dirty dot */
+  --primary-foreground:  #ffffff;
+  --accent:              #e8f4ff;   /* selected row / active chip fill */
+  --accent-foreground:   #00619f;   /* text on --accent */
+  --accent-link:         #0084dd;   /* accent text on white (links, + actions) */
+
+  /* ── state ──────────────────────────────────────────────────────────────── */
+  --destructive:         #e5484d;
+  --warning:             #c99700;
+
+  /* ── radii & shadows (chrome only) ──────────────────────────────────────── */
+  --radius-trough:       12px;
+  --radius-tab:          8px;       /* also rows, chips, small fields */
+  --radius-dashed:       10px;
+  --radius-button:       10px;
+  --radius-popover:      12px;
+  --shadow-pill:         0 2px 6px rgba(0,0,0,.10);   /* the raised active tab */
+  --shadow-popover:      0 8px 28px rgba(0,0,0,.14);
+
+  /* ── the label sheet — NEVER themed, never token-driven beyond these ────── */
+  --sheet:               #ffffff;
+  --sheet-border:        oklch(0.75 0.01 60);
+  --sheet-shadow:        0 3px 14px rgba(0,0,0,.12);
+  --sheet-ink:           #000000;
+
+  /* ── kept: the hover / flash tints VISUAL-SPEC gives as literals, named here
+         so no component has to spell a colour of its own ──────────────────── */
+  --row-hover:           #fafafa;   /* §3 tree / rule row hover */
+  --gutter-hover:        #d8d8d8;   /* §1 the gutter (= splitter) under the pointer */
+  --box-ring:            #d7d7d7;   /* §3 the block box's 1px ring */
+  --box-flash:           #fff8c8;   /* §3 the block box's 240ms flash */
+  --box-shadow:          0 1px 4px rgba(0,0,0,.09);  /* §3, inside the editor text */
+  --code-keyword:        #0451a5;   /* §3 */
+  --code-string:         #a31515;   /* §3 */
+  --code-expression:     oklch(0.50 0.14 40);  /* §3 names no colour for `{{ }}`: kept */
+
+  /* ── kept: names the app / shadcn-vue still use, re-pointed to the nearest
+         new token. Anything the new file has no answer for keeps its value. ─ */
+  --background:          var(--tray);
+  --card-foreground:     var(--foreground);
+  --popover:             var(--card);
+  --popover-foreground:  var(--foreground);
+  --muted:               var(--field);
+  --border:              var(--section-border);
+  --input:               var(--field-border);
+  --ring:                var(--primary);
+  --secondary:           var(--field);
+  --secondary-foreground: var(--foreground);
+  --accent-border:       var(--primary);
+  --destructive-foreground: var(--primary-foreground);
+  --grid-dot:            var(--canvas-dot);
+  --radius:              var(--radius-button);
+  /* No equivalent in the new file: kept at the previous pass's values. */
+  --warning-bg:          oklch(0.98 0.02 85);
+  --warning-border:      oklch(0.89 0.03 85);
+  --warning-foreground:  oklch(0.40 0.06 75);
+  --info:                oklch(0.45 0.10 215);
+  --info-bg:             oklch(0.955 0.012 200);
+  --ok:                  oklch(0.62 0.15 150);
+  --comp-bg:             oklch(0.955 0.012 300);
+  --comp-fg:             oklch(0.42 0.07 300);
 }
 
+/* Dark mode is out of scope for this pass (VISUAL-SPEC §9): left as the previous pass had it. */
 .dark {
   --background: oklch(0.19 0.008 60);
   --foreground: oklch(0.93 0.004 90);
@@ -68,14 +158,42 @@
   --info-bg: oklch(0.28 0.02 220);
   --info: oklch(0.72 0.08 220);
   --grid-dot: oklch(0.28 0.010 60);
+  /* Dark keeps working for the names this pass added, without being tuned. */
+  --card-radius: 14px;
+  --canvas: oklch(0.205 0.008 60);
+  --canvas-dot: oklch(0.28 0.010 60);
+  --tray: oklch(0.17 0.008 60);
+  --scope: oklch(0.225 0.009 60);
+  --scope-border: oklch(0.30 0.010 60);
+  --scope-well: oklch(0.26 0.010 60);
+  --scope-well-border: oklch(0.30 0.010 60);
+  --section-border: oklch(0.30 0.010 60);
+  --hairline: oklch(0.28 0.010 60);
+  --field: oklch(0.26 0.010 60);
+  --field-border: oklch(0.32 0.010 60);
+  --dashed: oklch(0.35 0.010 60);
+  --muted-foreground-2: oklch(0.70 0.010 60);
+  --meta-foreground: oklch(0.62 0.010 60);
+  --faint-foreground: oklch(0.58 0.010 60);
+  --accent-link: oklch(0.78 0.14 40);
+  --row-hover: oklch(0.26 0.010 60);
+  --gutter-hover: oklch(0.30 0.010 60);
+  --box-ring: oklch(0.35 0.010 60);
+  --box-flash: oklch(0.35 0.06 95);
+  --comp-bg: oklch(0.30 0.04 300);
+  --comp-fg: oklch(0.80 0.06 300);
+  --code-keyword: oklch(0.76 0.09 215);
+  --code-string: oklch(0.72 0.10 30);
+  --code-expression: oklch(0.78 0.13 40);
 }
 
 /* The two things the design needs that utilities don't give you. */
 @layer components {
-  /* preview canvas */
+  /* the Canvas / Preview ground: lighter than the tray, so the sheet is the brightest thing */
   .dot-grid {
-    background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
-    background-size: 16px 16px;
+    background-color: var(--canvas);
+    background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+    background-size: var(--canvas-dot-size) var(--canvas-dot-size);
   }
   /* section eyebrow: 10px sans 600 uppercase */
   .eyebrow {
@@ -84,6 +202,6 @@
     line-height: 1;
     letter-spacing: 0.07em;
     text-transform: uppercase;
-    color: var(--muted-foreground);
+    color: var(--muted-foreground-2);
   }
 }

@@ -69,13 +69,16 @@ const saveHint = computed(() => (props.dirty ? 'unsaved' : props.savedAt ? 'save
 </template>
 
 <style scoped>
+/* Level 0 chrome, one step lighter than the top bar (VISUAL-SPEC §2). The host adds
+   `.on-ink`, which re-points the text and line tokens every rule below reads. */
 .strip {
   display: flex;
   align-items: center;
   gap: 10px;
   height: 36px;
   padding: 0 10px;
-  border-bottom: 1px solid var(--border);
+  background: var(--ink-2);
+  border-bottom: 1px solid var(--ink-border-2);
   overflow: hidden;
 }
 .strip > * {
@@ -90,8 +93,8 @@ const saveHint = computed(() => (props.dirty ? 'unsaved' : props.savedAt ? 'save
 .ghost {
   height: 26px;
   padding: 0 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border: 1px solid var(--ink-control-border);
+  border-radius: var(--radius-button);
   background: transparent;
   color: var(--muted-foreground);
   font-size: 11px;
@@ -118,71 +121,73 @@ const saveHint = computed(() => (props.dirty ? 'unsaved' : props.savedAt ? 'save
   color: var(--foreground);
 }
 .text.primary {
-  color: var(--primary);
+  color: var(--accent-link);
 }
 
 .divider {
   width: 1px;
-  height: 18px;
-  background: var(--border);
+  height: 16px;
+  background: var(--ink-divider);
 }
 /* Geometry is a measurement: mono, always. Read-only — edited in Label setup…. */
 .size {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 10.5px;
-  color: oklch(0.45 0.01 60);
+  color: var(--meta-foreground);
 }
 
 .meta {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 10.5px;
-  color: var(--muted-foreground);
+  color: var(--meta-foreground);
 }
 .save kbd {
   font: inherit;
 }
 
 /* The mode toggle: the app's trough one step smaller (SPEC §4.1). */
+/* The app's trough one size down; on ink it is a well, and the active tab a white pill. */
 .trough {
   display: flex;
   align-items: center;
   gap: 2px;
   padding: 2px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--muted);
+  border: 1px solid var(--ink-well-border);
+  border-radius: var(--radius-trough);
+  background: var(--ink-well);
 }
 .mode {
   height: 22px;
   padding: 0 12px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-tab);
   background: transparent;
   font-size: 12px;
   font-weight: 450;
-  color: oklch(0.45 0.01 60);
+  color: var(--ink-muted);
   transition: background-color 120ms ease-out, box-shadow 120ms ease-out, color 120ms ease-out;
 }
 .mode.on {
   background: var(--card);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.07);
+  box-shadow: var(--shadow-pill);
   font-weight: 600;
-  color: var(--foreground);
+  color: var(--ink);
 }
+/* Small bordered chip on ink: the `--ink-control` recipe (VISUAL-SPEC §2). */
 .flip {
   height: 22px;
   width: 26px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: transparent;
+  border: 1px solid var(--ink-control-border);
+  border-radius: var(--radius-button);
+  background: var(--ink-control);
   font-size: 12px;
-  color: var(--muted-foreground);
+  color: var(--ink-control-fg);
   transition: background-color 120ms ease-out, color 120ms ease-out;
 }
 .flip:hover,
 .flip.on {
-  background: var(--muted);
-  color: var(--foreground);
+  background: var(--ink-well);
+  color: var(--ink-foreground);
 }
 
 .chip {

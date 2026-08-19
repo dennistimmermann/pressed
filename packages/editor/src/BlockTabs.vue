@@ -97,9 +97,9 @@ function pick(kind: 'script' | 'style') {
   align-items: center;
   gap: 2px;
   padding: 3px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--muted);
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-trough);
+  background: var(--field);
   white-space: nowrap;
 }
 .tab {
@@ -109,7 +109,7 @@ function pick(kind: 'script' | 'style') {
   height: 26px;
   padding: 6px 11px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-tab);
   background: transparent;
   cursor: pointer;
   transition: background-color 120ms ease-out, box-shadow 120ms ease-out;
@@ -118,11 +118,11 @@ function pick(kind: 'script' | 'style') {
   font-family: var(--font-sans, system-ui, sans-serif);
   font-size: 12px;
   font-weight: 450;
-  color: oklch(0.45 0.01 60);
+  color: var(--muted-foreground);
 }
 .tab.on {
   background: var(--card);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.07);
+  box-shadow: var(--shadow-pill);
 }
 .tab.on .label {
   font-weight: 600;
@@ -132,7 +132,7 @@ function pick(kind: 'script' | 'style') {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 10.5px;
   font-weight: 500;
-  color: var(--muted-foreground);
+  color: var(--meta-foreground);
 }
 .badge {
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -174,10 +174,10 @@ function pick(kind: 'script' | 'style') {
   z-index: 20;
   width: 280px;
   padding: 5px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-popover);
   background: var(--popover);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.1);
+  box-shadow: var(--shadow-popover);
   white-space: normal;
 }
 .menu-item {

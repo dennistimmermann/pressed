@@ -319,16 +319,16 @@ const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent &
 /* ---- header 36px (SPEC §5) ---- */
 .head-bar {
   display: flex; align-items: center; gap: 7px; flex: none; height: 36px; padding: 0 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--section-border);
 }
 .chip {
-  flex: none; padding: 3px 5px; border-radius: 4px; background: var(--muted);
+  flex: none; padding: 3px 5px; border-radius: 4px; background: var(--field);
   font-family: var(--font-sans); font-size: 8.5px; font-weight: 600; line-height: 1; color: var(--muted-foreground);
 }
 .name { font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
-.name.accent { color: var(--primary); }
-.cls { font-family: var(--font-mono); font-size: 12px; font-weight: 500; color: var(--primary); }
-.loc { font-family: var(--font-mono); font-size: 10px; font-weight: 450; color: oklch(0.68 0.008 60); }
+.name.accent { color: var(--accent-link); }
+.cls { font-family: var(--font-mono); font-size: 12px; font-weight: 500; color: var(--accent-link); }
+.loc { font-family: var(--font-mono); font-size: 10px; font-weight: 450; color: var(--meta-foreground); }
 .empty { padding: 12px; margin: 0; font-size: 11px; color: var(--muted-foreground); }
 
 /* ---- section header: the Layers pattern, 34px ---- */
@@ -336,9 +336,9 @@ const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent &
   display: flex; align-items: center; gap: 8px; width: 100%; flex: none;
   height: 34px; padding: 10px 12px 8px; background: transparent; border: 0;
 }
-.head.hair { border-top: 1px solid var(--border); }
-.eyebrow { font-family: var(--font-sans); font-size: 10px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted-foreground); }
-.meta { font-family: var(--font-mono); font-size: 10px; font-weight: 450; color: oklch(0.68 0.008 60); }
+.head.hair { border-top: 1px solid var(--section-border); }
+.eyebrow { font-family: var(--font-sans); font-size: 10px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted-foreground-2); }
+.meta { font-family: var(--font-mono); font-size: 10px; font-weight: 450; color: var(--meta-foreground); }
 .meta.unused { color: var(--warning-foreground); }
 .chev { flex: none; font-size: 8px; color: var(--muted-foreground); }
 .body { display: flex; flex-direction: column; padding: 0 12px 11px; }
@@ -348,7 +348,7 @@ const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent &
 /* ---- props ---- */
 .prop-row {
   display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 8px;
-  border: 1px solid var(--border); border-radius: 6px;
+  border: 1px solid transparent; border-radius: var(--radius-tab); background: var(--field);
   font-family: var(--font-mono); font-size: 11px; font-weight: 500;
 }
 .prop-row .type { font-weight: 450; font-size: 10px; color: var(--info); }
@@ -356,30 +356,30 @@ const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent &
   min-width: 0; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-weight: 450; font-size: 9.5px; color: var(--muted-foreground);
 }
-.prop-row .passed.none { color: oklch(0.68 0.008 60); }
-.prop-row .callers { flex: none; white-space: nowrap; font-size: 9px; color: var(--muted-foreground); }
+.prop-row .passed.none { color: var(--faint-foreground); }
+.prop-row .callers { flex: none; white-space: nowrap; font-size: 9px; color: var(--meta-foreground); }
 
 /* ---- pills (SPEC §4.3: radius 5, active = accent + 600) ---- */
 .pill {
-  display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 5px;
-  border: 1px solid var(--border); background: var(--card);
+  display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: var(--radius-tab);
+  border: 1px solid var(--field-border); background: var(--card);
   font-family: var(--font-mono); font-size: 10.5px; font-weight: 500; color: var(--muted-foreground);
   transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
 }
-.pill:hover { background: var(--muted); }
-.pill.on { border-color: var(--accent-border); background: var(--accent); font-weight: 600; color: var(--accent-foreground); }
+.pill:hover { background: var(--field); }
+.pill.on { border-color: var(--primary); background: var(--accent); font-weight: 600; color: var(--accent-foreground); }
 .pill.faint { opacity: 0.6; }
-.pill.dashed { border-style: dashed; }
+.pill.dashed { border-style: dashed; border-color: var(--dashed); color: var(--accent-link); }
 .pill .x { font-weight: 400; opacity: 0.6; }
 .pill .x:hover { opacity: 1; color: var(--destructive); }
 .pill .cls { font-size: 10.5px; color: var(--muted-foreground); }
 
 .sel {
-  width: 150px; height: 26px; padding: 0 8px; border: 1px solid var(--input); border-radius: 6px;
-  background: var(--card); font-family: var(--font-mono); font-size: 11px; font-weight: 500; outline: none;
+  width: 150px; height: 26px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--radius-tab);
+  background: var(--field); font-family: var(--font-mono); font-size: 11px; font-weight: 500; outline: none;
 }
-.sel:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
-.more { align-self: flex-start; border: 0; background: transparent; padding: 0; font-family: var(--font-sans); font-size: 10.5px; font-weight: 500; color: var(--primary); }
+.sel:focus-visible { border-color: var(--primary); background: var(--card); }
+.more { align-self: flex-start; border: 0; background: transparent; padding: 0; font-family: var(--font-sans); font-size: 10.5px; font-weight: 500; color: var(--accent-link); }
 .more:hover { text-decoration: underline; }
 
 /* ---- the `+` menu (SPEC §4.8) ---- */
@@ -387,8 +387,8 @@ const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent &
 .backdrop { position: fixed; inset: 0; z-index: 19; }
 .menu {
   position: fixed; z-index: 60; width: 240px; padding: 6px;
-  border: 1px solid var(--border); border-radius: 8px; background: var(--popover);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.10);
+  border: 1px solid var(--field-border); border-radius: var(--radius-popover); background: var(--popover);
+  box-shadow: var(--shadow-popover);
 }
 .menu .item {
   display: flex; align-items: center; gap: 8px; width: 100%; height: 26px; padding: 0 9px;
@@ -396,17 +396,17 @@ const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent &
   font-family: var(--font-mono); font-size: 11px; color: var(--popover-foreground);
 }
 .menu .item:hover { background: var(--accent); }
-.menu .hint { font-size: 10px; color: var(--muted-foreground); }
+.menu .hint { font-size: 10px; color: var(--meta-foreground); }
 .menu input {
-  width: 100%; height: 26px; margin-top: 4px; padding: 0 9px; border: 1px solid var(--input);
-  border-radius: 6px; background: var(--card); font-family: var(--font-mono); font-size: 11px; outline: none;
+  width: 100%; height: 26px; margin-top: 4px; padding: 0 9px; border: 1px solid transparent;
+  border-radius: var(--radius-tab); background: var(--field); font-family: var(--font-mono); font-size: 11px; outline: none;
 }
-.menu input:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
+.menu input:focus-visible { border-color: var(--primary); background: var(--card); }
 
 /* ---- footer: destructive text + inline confirm, never a modal ---- */
 .foot {
   display: flex; align-items: center; gap: 8px; flex: none; padding: 10px 12px;
-  border-top: 1px solid var(--border); font-size: 11px; line-height: 1.35;
+  border-top: 1px solid var(--section-border); font-size: 11px; line-height: 1.35;
 }
 .foot .danger { border: 0; background: transparent; padding: 0; font-size: 11px; font-weight: 500; color: var(--destructive); }
 .foot .danger:hover { text-decoration: underline; }

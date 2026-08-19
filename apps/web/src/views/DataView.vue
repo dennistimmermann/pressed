@@ -47,14 +47,14 @@ function onCsv(event: Event) {
 
 <template>
   <section class="flex h-full min-h-0">
-    <div class="flex w-[340px] flex-none flex-col gap-3 border-r border-border p-3">
+    <div class="flex w-[340px] flex-none flex-col gap-3 border-r border-[var(--section-border)] p-3">
       <p class="eyebrow">Data source</p>
 
-      <nav class="flex items-center gap-[3px] rounded-[9px] border border-border bg-muted p-[3px]" aria-label="Data sources">
+      <nav class="flex items-center gap-[3px] rounded-[var(--radius-trough)] border border-input bg-muted p-[3px]" aria-label="Data sources">
         <button
           v-for="source in SOURCES" :key="source.id" type="button"
-          class="flex-1 rounded-[7px] px-2.5 py-1.5 text-[12px] transition-colors duration-120 ease-out"
-          :class="tab === source.id ? 'bg-card font-semibold shadow-[0_1px_2px_rgb(0_0_0/.07)]' : 'text-muted-foreground hover:text-foreground'"
+          class="flex-1 rounded-[var(--radius-tab)] px-2.5 py-1.5 text-[12px] transition-colors duration-120 ease-out"
+          :class="tab === source.id ? 'bg-card font-semibold shadow-[var(--shadow-pill)]' : 'text-muted-foreground hover:text-foreground'"
           @click="tab = source.id"
         >
           {{ source.label }}
@@ -65,7 +65,7 @@ function onCsv(event: Event) {
         <label class="text-[12px]" for="csv-file">CSV file — the first row is the field names</label>
         <input
           id="csv-file" type="file" accept=".csv,text/csv"
-          class="text-[12px] file:mr-2 file:h-[30px] file:rounded-[6px] file:border file:border-border file:bg-card file:px-2.5 file:text-[12px]"
+          class="text-[12px] file:mr-2 file:h-[30px] file:rounded-[var(--radius-button)] file:border file:border-input file:bg-card file:px-2.5 file:text-[12px]"
           @change="onCsv"
         >
       </div>
@@ -74,11 +74,11 @@ function onCsv(event: Event) {
         <label class="text-[12px]" for="spoolman-url">Spoolman base URL</label>
         <input
           id="spoolman-url" v-model="settings.spoolmanUrl" type="url" spellcheck="false"
-          class="h-[30px] rounded-[6px] border border-input bg-card px-2 font-mono text-[11.5px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          class="h-[30px] rounded-[var(--radius-tab)] border border-transparent bg-muted px-2 font-mono text-[11.5px] outline-none focus:border-primary focus:bg-card"
         >
         <button
           type="button" :disabled="busy"
-          class="h-8 w-fit rounded-[6px] border border-border px-2.5 text-[12px] hover:bg-muted disabled:opacity-50"
+          class="h-8 w-fit rounded-[var(--radius-button)] border border-input px-2.5 text-[12px] hover:bg-muted disabled:opacity-50"
           @click="run('spoolman', () => spoolmanSource.load(settings.spoolmanUrl))"
         >
           Load spools
@@ -89,10 +89,10 @@ function onCsv(event: Event) {
         <label class="text-[12px]" for="copies">Copies — rows are <span class="font-mono">{{ '{ n }' }}</span></label>
         <input
           id="copies" v-model.number="copies" type="number" min="1" step="1"
-          class="h-[30px] w-[104px] rounded-[6px] border border-input bg-card px-2 font-mono text-[11.5px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          class="h-[30px] w-[104px] rounded-[var(--radius-tab)] border border-transparent bg-muted px-2 font-mono text-[11.5px] outline-none focus:border-primary focus:bg-card"
         >
         <button
-          type="button" class="h-8 w-fit rounded-[6px] border border-border px-2.5 text-[12px] hover:bg-muted"
+          type="button" class="h-8 w-fit rounded-[var(--radius-button)] border border-input px-2.5 text-[12px] hover:bg-muted"
           @click="run('none', () => noneSource.load(copies))"
         >
           Use {{ copies }} copies
@@ -108,7 +108,7 @@ function onCsv(event: Event) {
     </div>
 
     <div class="flex min-h-0 flex-1 flex-col">
-      <header class="flex h-[34px] flex-none items-center gap-2 border-b border-border px-3">
+      <header class="flex h-[34px] flex-none items-center gap-2 border-b border-[var(--section-border)] px-3">
         <input
           id="select-all" type="checkbox" class="accent-[var(--primary)]"
           :checked="allSelected" :disabled="!data.rows.length" @change="selectAll(!allSelected)"
@@ -121,8 +121,8 @@ function onCsv(event: Event) {
       <ul v-if="data.rows.length" class="min-h-0 flex-1 overflow-y-auto p-1">
         <li
           v-for="(row, index) in data.rows" :key="index"
-          class="flex items-center gap-2 rounded-[6px] px-2 py-1 transition-colors duration-120 ease-out"
-          :class="index === data.previewRowIndex ? 'bg-accent ring-1 ring-inset ring-accent-border' : 'hover:bg-muted'"
+          class="flex items-center gap-2 rounded-[var(--radius-tab)] px-2 py-1 transition-colors duration-120 ease-out"
+          :class="index === data.previewRowIndex ? 'bg-accent text-accent-foreground ring-1 ring-inset ring-primary' : 'hover:bg-[var(--row-hover)]'"
         >
           <input
             :id="`row-${index}`" type="checkbox" class="accent-[var(--primary)]"

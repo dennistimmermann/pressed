@@ -46,7 +46,7 @@ export const settings = persisted<Settings>('sprint.settings', {
   inspectorWidth: 340,
   layersCollapsed: { layers: false, rules: true, script: true },
   inspectorCollapsed: { props: false, attributes: false, style: false },
-  splitSize: 326,
+  splitSize: 318,
   splitSideBySide: false,
   previewMode: 'rendered',
   zoomCanvas: 'fit',
