@@ -91,8 +91,6 @@ export function defineSprintTheme(): string {
       'editorLineNumber.foreground': colour(c.lineNumber),
       'editorLineNumber.activeForeground': token('--primary'),
       'editorCursor.foreground': token('--primary'),
-      'editor.lineHighlightBackground': '#00000000',
-      'editor.lineHighlightBorder': '#00000000',
       'editor.selectionBackground': token('--accent'),
       'editorIndentGuide.background1': token('--border'),
       'editorError.foreground': colour(c.marker),

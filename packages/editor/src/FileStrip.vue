@@ -14,7 +14,6 @@ const props = withDefaults(
     /** Which modes the toggle offers; ≤900px drops `split` (SPEC §3 E12). */
     modes?: EditorMode[]
     /** Split only: the canvas sits beside the editor rather than above it. */
-    sideBySide?: boolean
     dirty?: boolean
     /** Read-only label geometry from `<meta>`, e.g. `60 × 40 · gap 2` (README-tabs §2). */
     sizeText?: string
@@ -23,12 +22,12 @@ const props = withDefaults(
     /** When the record was last saved; drives the `⌘S saved` hint. */
     savedAt?: number | null
   }>(),
-  { mode: null, modes: () => ['blocks', 'split', 'code'], sideBySide: false, dirty: false, sizeText: '', errorCount: 0, warningCount: 0, savedAt: null },
+  { mode: null, modes: () => ['blocks', 'split', 'code'], dirty: false, sizeText: '', errorCount: 0, warningCount: 0, savedAt: null },
 )
 
 defineEmits<{
   save: []; 'save-as': []; manage: []; 'label-setup': []
-  'update:mode': [mode: EditorMode]; flip: []
+  'update:mode': [mode: EditorMode]
 }>()
 
 const LABELS: Record<EditorMode, string> = { blocks: 'Blocks', split: 'Split', code: 'Code' }
@@ -55,16 +54,9 @@ const saveHint = computed(() => (props.dirty ? 'unsaved' : props.savedAt ? 'save
         class="mode" :class="{ on: mode === m.id }" @click="$emit('update:mode', m.id)"
       >{{ m.label }}</button>
     </div>
-    <span v-if="mode" class="meta">⌘⇧M</span>
-    <!-- Flips the split; only Split has one to flip (SPEC §2). -->
-    <button
-      v-if="mode === 'split'" type="button" class="flip" :class="{ on: sideBySide }"
-      title="canvas beside the editor" aria-label="flip the split" @click="$emit('flip')"
-    >⇄</button>
-
     <span v-if="errorCount" class="chip error">● {{ errorCount }} error{{ errorCount === 1 ? '' : 's' }}</span>
     <span v-if="warningCount" class="chip warning">● {{ warningCount }} warning{{ warningCount === 1 ? '' : 's' }}</span>
-    <span class="meta save"><kbd>⌘S</kbd> {{ saveHint }}</span>
+    <span class="meta save">{{ saveHint }}</span>
   </div>
 </template>
 
@@ -141,10 +133,6 @@ const saveHint = computed(() => (props.dirty ? 'unsaved' : props.savedAt ? 'save
   font-size: 10.5px;
   color: var(--meta-foreground);
 }
-.save kbd {
-  font: inherit;
-}
-
 /* The mode toggle: the app's trough one step smaller (SPEC §4.1). */
 /* The app's trough one size down; on ink it is a well, and the active tab a white pill. */
 .trough {
@@ -173,23 +161,6 @@ const saveHint = computed(() => (props.dirty ? 'unsaved' : props.savedAt ? 'save
   font-weight: 600;
   color: var(--ink);
 }
-/* Small bordered chip on ink: the `--ink-control` recipe (VISUAL-SPEC §2). */
-.flip {
-  height: 22px;
-  width: 26px;
-  border: 1px solid var(--ink-control-border);
-  border-radius: var(--radius-control);
-  background: var(--ink-control);
-  font-size: 12px;
-  color: var(--ink-control-fg);
-  transition: background-color 120ms ease-out, color 120ms ease-out;
-}
-.flip:hover,
-.flip.on {
-  background: var(--ink-well);
-  color: var(--ink-foreground);
-}
-
 .chip {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 10.5px;

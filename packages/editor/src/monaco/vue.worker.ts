@@ -52,9 +52,9 @@ const vueCompilerOptions = {
   // `typesRoot` defaults to a `__dirname`-relative path that does not exist in a browser
   // bundle; the package-relative form resolves through the virtual /node_modules.
   ...getDefaultCompilerOptions(99, 'vue', false, '@vue/language-core/types'),
-  // Mark unknown props on library components (design: the marker is the point of Volar
-  // here) but not unknown *components* — snippets are registered at runtime, so every
-  // `<temp>` in a template would be flagged.
+  // Mark unknown props on library components and on snippets (`snippets.ts` registers those in
+  // `GlobalComponents`) — the marker is the point of Volar here. Unknown *components* stay
+  // unchecked: half-typed tag names would flash an error on every keystroke.
   checkUnknownProps: true,
 }
 

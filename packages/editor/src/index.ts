@@ -24,8 +24,8 @@ export { default as ManageTemplates } from './ManageTemplates.vue'
 export { default as LayersPane } from './LayersPane.vue'
 
 // Source analysis at the caret: the host needs it to feed the Inspector.
-export { elementAt, attributeEdit } from './ast'
-export type { ElementInfo, PropInfo, Edit, Loc } from './ast'
+export { elementAt, cursorContext, attributeEdit, insertAt, insertVar } from './ast'
+export type { ElementInfo, PropInfo, CursorContext, Edit, Loc } from './ast'
 // Codeless structure editing: each primitive is pure `(source, element) → edits + where it landed`.
 export {
   parentOf, siblingsOf, elementTree, countMatching, matchingElements, moveElement, indentElement, outdentElement,

@@ -17,11 +17,14 @@ export const componentUri = (name: string) => `file:///sprint/${name}.vue`
 /**
  * @param contextType TS type text for one record, e.g. the data source's `Row` type.
  * @param componentNames names of the library components available in every template.
+ * @param snippetNames the file's own `<snippet>` names — same deal, from the virtual models
+ *   `snippets.ts` keeps in sync, so `<temp label="…">` is a known component with typed props.
  */
-export function sprintEnv(contextType: string, componentNames: string[]): Record<string, string> {
-  const globals = componentNames
-    .map((name) => `    ${name}: typeof import('./sprint/${name}.vue').default`)
-    .join('\n')
+export function sprintEnv(contextType: string, componentNames: string[], snippetNames: string[] = []): Record<string, string> {
+  const globals = [
+    ...componentNames.map((name) => `    ${name}: typeof import('./sprint/${name}.vue').default`),
+    ...snippetNames.map((name) => `    ${JSON.stringify(name)}: typeof import('./sprint/snippets/${name}.vue').default`),
+  ].join('\n')
 
   return {
     [ENV_URI]: [

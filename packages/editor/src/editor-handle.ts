@@ -5,6 +5,9 @@
  * Deliberately tiny and Monaco-free: offsets, not positions; one `executeEdits` so a batch
  * is a single undo step, shared with the editor's own undo stack.
  */
+/** A diagnostic as source offsets — the compiler's messages and the language service's alike. */
+export type Marker = { start: number; end: number; message: string; severity: 'error' | 'warning' }
+
 export interface EditorHandle {
   getValue(): string
   /** Caret position as a character offset into `getValue()`. */
@@ -21,5 +24,9 @@ export interface EditorHandle {
   executeEdits(edits: { start: number; end: number; text: string }[]): void
   /** Subscribe to caret moves; returns an unsubscribe function. */
   onCaretChange(cb: (offset: number) => void): () => void
+  /** Every marker overlapping a source range — ours *and* the language service's. */
+  markersIn(range: { start: number; end: number }): Marker[]
+  /** Subscribe to marker changes; returns an unsubscribe function. */
+  onMarkersChange(cb: () => void): () => void
   focus(): void
 }

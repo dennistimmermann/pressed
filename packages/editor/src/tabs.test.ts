@@ -69,9 +69,16 @@ describe('insertBlock', () => {
     const m = tabsModel(src)
     const e = insertBlock(src, m, 'style', undefined, 'badge')
     const out = src.slice(0, e.start) + e.text + src.slice(e.end)
-    expect(out).toContain('<snippet name="badge" props="text">\n  <template>\n  <b>{{ text }}</b>\n  </template>\n  <style>')
+    // `props="text"` becomes a typed defineProps — the loader ignores the attribute once a <template> exists.
+    expect(out).toContain('<snippet name="badge">\n  <script setup lang="ts">\n  defineProps<{ text: string }>()\n  </script>\n  <template>\n  <b>{{ text }}</b>\n  </template>\n  <style scoped>')
     const e2 = insertBlock(src, m, 'style', undefined, 'temp')
     const out2 = src.slice(0, e2.start) + e2.text + src.slice(e2.end)
-    expect(out2).toMatch(/<\/template>\n  <style>\n\n  <\/style>\n<\/snippet>/)
+    expect(out2).toMatch(/<\/template>\n  <style scoped>\n\n  <\/style>\n<\/snippet>/)
+  })
+  it('a snippet style block is scoped, the label\'s is not', () => {
+    const m = tabsModel(src)
+    expect(insertBlock(src, m, 'style', undefined, 'temp').text).toContain('<style scoped>')
+    const bare = `<meta>\n{}\n</meta>\n\n<template>\n<div />\n</template>`
+    expect(insertBlock(bare, tabsModel(bare), 'style').text).toContain('<style>\n')
   })
 })

@@ -1,7 +1,7 @@
 <!--
   The 42px scope row (SPEC §4.1 "Scope trough"): one trough holding the file tab, a hairline +
   `SNIPPETS` eyebrow, one tab per snippet and `+`. The scope actions live at its right and only
-  exist while a snippet scope is active. Label-agnostic: the host names its own root (`leaveLabel`).
+  exist while a snippet scope is active. The file tab is the way out of a scope.
 -->
 <script setup lang="ts">
 import { nextTick, ref, useTemplateRef } from 'vue'
@@ -18,9 +18,8 @@ const props = withDefaults(
     /** Worst message per tab, keyed by `tabKey`; a tab sums its own blocks. */
     badges?: Record<string, Badge>
     /** What `⌥⇧←` goes back to, in the host's own word (`label`). */
-    leaveLabel?: string
   }>(),
-  { dirty: false, badges: () => ({}), leaveLabel: '' },
+  { dirty: false, badges: () => ({}) },
 )
 
 const emit = defineEmits<{
@@ -112,9 +111,6 @@ function commitRename() {
       <button type="button" class="text" @click="startRename">Rename</button>
       <button type="button" class="text" @click="emit('promote', scope)">Promote to library</button>
       <button type="button" class="text danger" @click="emit('delete', scope)">Delete</button>
-      <button type="button" class="text back" @click="emit('leave-scope')">
-        <span class="key">⌥⇧←</span> {{ leaveLabel }}
-      </button>
     </template>
   </div>
 </template>
@@ -267,16 +263,5 @@ function commitRename() {
 }
 .text.danger {
   color: var(--destructive);
-}
-.back {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--meta-foreground);
-}
-.back .key {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
-  color: var(--meta-foreground);
 }
 </style>

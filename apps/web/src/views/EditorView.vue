@@ -11,7 +11,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import { useElementSize, useEventListener, useMediaQuery } from '@vueuse/core'
-import { LIBRARY_NAMES } from '@sprint/core'
 import { parseMeta } from '@sprint/core/template/meta.ts'
 import { LayersPane, ManageTemplates, PreviewPane, StatusPane } from '@sprint/editor'
 import type { EditorMode } from '@sprint/editor'
@@ -24,9 +23,9 @@ import { K30F } from '@/printers'
 import { rasterDataUrl } from '@/raster'
 import {
   addBlock, can, canFor, canvasEnterScope, canvasReorder, canvasResize, canvasSelect, classTarget,
-  cycleTab, deleteRule, deleteSelected, dirty, duplicateSelected, editor, element, ensureSelector,
-  enterScope, filename, formatBlock, goToOffset, indentSelected, jumpTo, layerCount, layers,
-  leaveScope, load, matchedLocs, meta, insertText, moveSelected, outdentSelected, previewDocument,
+  deleteRule, deleteSelected, dirty, duplicateSelected, editor, element, ensureSelector,
+  enterScope, erroredElements, filename, formatBlock, goToOffset, indentSelected, jumpTo, layerCount, layers,
+  leaveScope, load, matchedLocs, meta, insertables, insertText, moveSelected, outdentSelected, previewDocument,
   previewState, renameRule, reparent, ruleAtCaret, runOnElement, save, saveAs, scopeRange,
   scopeRules, scriptInfo, selectElement, switchTab, tabs, wrapChoices,
 } from '@/stores/editor'
@@ -101,12 +100,7 @@ useEventListener('keydown', (e: KeyboardEvent) => {
     if (e.code === 'KeyK') return act(deleteSelected)
   }
 
-  if (!e.altKey) return
-  if (e.metaKey || e.ctrlKey) {
-    if (e.code === 'BracketRight') act(() => cycleTab(1))
-    else if (e.code === 'BracketLeft') act(() => cycleTab(-1))
-    return
-  }
+  if (!e.altKey || e.metaKey || e.ctrlKey) return
   // ⌥⇧ arrows move the element. ⌥⇧← is also "leave the snippet scope" (README-tabs §3): outdent
   // wins while there is a level left to climb, and the last press walks out of the snippet.
   if (e.shiftKey && structural) {
@@ -117,19 +111,6 @@ useEventListener('keydown', (e: KeyboardEvent) => {
   }
   if (e.shiftKey && e.code === 'ArrowLeft') return act(leaveScope)
   if (e.shiftKey && e.code === 'KeyF') return act(() => { void formatBlock() })
-  const digit = /^Digit([1-9])$/.exec(e.code)
-  if (!digit) return
-  const n = Number(digit[1])
-  if (n <= 3) {
-    // The blocks of whatever scope we are in, in strip order.
-    const scope = editor.activeTab.scope
-    const blocks = scope === null ? tabs.value.blocks : tabs.value.snippets.find((s) => s.name === scope)?.blocks ?? []
-    const block = blocks[n - 1]
-    if (block) act(() => switchTab({ scope, kind: block.kind }))
-  } else {
-    const snippet = tabs.value.snippets[n - 4]
-    if (snippet) act(() => enterScope(snippet.name))
-  }
 }, { capture: true })
 
 // ---------------------------------------------------------------- preview
@@ -173,12 +154,6 @@ watch(
 
 // ---------------------------------------------------------------- pane props
 // One computed per pane: the single place that has to change if a pane's props do.
-
-/** What `+ Insert element` in Layers offers: the library, then this file's snippets. */
-const componentsProps = computed(() => ({
-  library: editor.components.filter((c) => LIBRARY_NAMES.includes(c.name)),
-  snippets: editor.components.filter((c) => !LIBRARY_NAMES.includes(c.name)),
-}))
 
 /**
  * Canvas and Preview are the same component (SPEC §4.5); everything below is shared, and the
@@ -225,9 +200,10 @@ watch(() => editor.activeTab.kind, (kind) => { settings.layersCollapsed[SECTION[
 const layersProps = computed(() => ({
   tree: layers.value,
   selected: element.value?.loc,
+  errors: erroredElements.value,
   count: layerCount.value,
   snippets: tabs.value.snippets.map((s) => s.name),
-  insertables: { components: componentsProps.value.library, snippets: componentsProps.value.snippets },
+  insertables: insertables.value,
   wrapChoices: wrapChoices.value,
   can: canFor,
   rules: scopeRules.value,
@@ -235,6 +211,8 @@ const layersProps = computed(() => ({
   script: scriptInfo.value,
   active: SECTION[editor.activeTab.kind],
   compact: stacked.value,
+  scopeName: editor.activeTab.scope,
+  rootName: 'label',
   collapsed: settings.layersCollapsed,
   opensCode: mode.value === 'blocks',
   onSelect: selectElement,
@@ -349,8 +327,7 @@ async function onCreate() {
       the splitters have nothing to drag there, so they go.
     -->
     <EditorHeader
-      v-model:mode="mode" :modes="modeChoices" :side-by-side="settings.splitSideBySide"
-      @flip="settings.splitSideBySide = !settings.splitSideBySide"
+      v-model:mode="mode" :modes="modeChoices"
       @save-as="saveAsName = `${nameOf(editor.templateId)} copy`"
     />
 
@@ -394,14 +371,14 @@ async function onCreate() {
           :dir="settings.splitSideBySide ? 'x' : 'y'" :min="160" :max="splitMax"
         />
         <div v-show="mode !== 'blocks'" class="min-h-0 min-w-0 flex-1">
-          <EditorPane class="h-full" />
+          <EditorPane class="h-full" :flippable="mode === 'split' && !stacked" />
         </div>
       </div>
 
       <Splitter v-if="!stacked" v-model:size="settings.inspectorWidth" :min="300" invert />
-      <!-- Inspector + Status: identical in every mode, plus the Preview when the canvas has
-           left the middle column (SPEC §2). In Code mode the Preview is the top section of this
-           column, cut off by the splitter rail; Status is a flush 30px strip at its foot. -->
+      <!-- Inspector: identical in every mode, plus the Preview when the canvas has left the
+           middle column (SPEC §2). In Code mode the Preview is the top section of this column,
+           cut off by the splitter rail. -->
       <div
         class="flex min-w-0 flex-none flex-col"
         :class="stacked && 'order-3'"
@@ -418,12 +395,13 @@ async function onCreate() {
           <Splitter v-if="!stacked" v-model:size="settings.previewHeight" :min="160" dir="y" />
           <div v-else class="h-[9px] flex-none border-y border-[var(--pane-border)] bg-[var(--splitter)]" />
         </template>
-        <div class="flex min-h-0 flex-1 flex-col" :class="stacked && 'h-[280px] flex-none'">
-          <div class="min-h-0 flex-1"><InspectorPane class="h-full" /></div>
-          <StatusPane v-bind="statusProps" class="on-ink max-h-[40%] flex-none" />
-        </div>
+        <div class="min-h-0 flex-1" :class="stacked && 'h-[280px] flex-none'"><InspectorPane class="h-full" /></div>
       </div>
     </div>
+
+    <!-- Status: one ink strip across the whole foot of the view, under every column; it expands
+         upward over the work area to at most 40% of the view. -->
+    <StatusPane v-bind="statusProps" class="on-ink max-h-[40%] flex-none" />
 
     <!-- Dirty confirm and save-as: inline, because a question is not an error dialog. -->
     <div

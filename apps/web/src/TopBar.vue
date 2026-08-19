@@ -36,7 +36,7 @@ const TABS: { id: View; label: string }[] = [
     >
       <!-- Active = a white pill: an ink-on-ink active tab fails contrast (VISUAL-SPEC §2). -->
       <button
-        v-for="(tab, i) in TABS" :key="tab.id" type="button"
+        v-for="tab in TABS" :key="tab.id" type="button"
         class="flex items-center gap-2 rounded-[var(--radius-control)] px-2.5 py-1.5 transition-colors duration-120 ease-out"
         :class="view === tab.id
           ? 'bg-card shadow-[var(--shadow-pill)] text-[var(--ink)]'
@@ -49,7 +49,6 @@ const TABS: { id: View; label: string }[] = [
           class="font-mono text-[10.5px]"
           :class="view === tab.id ? 'text-[var(--muted-foreground-2)]' : 'text-[var(--ink-faint)]'"
         >{{ props.badges[tab.id] }}</span>
-        <span class="sr-only">⌘{{ i + 1 }}</span>
       </button>
     </nav>
 
@@ -68,7 +67,6 @@ const TABS: { id: View; label: string }[] = [
     <!-- The only filled button in the app (design invariant 1). -->
     <Button class="h-8 gap-2 rounded-[var(--radius-control)]" :disabled="printCount === 0" @click="emit('print')">
       Print {{ printCount }}
-      <kbd class="rounded-[var(--radius-badge)] bg-primary-foreground/20 px-1 py-0.5 font-mono text-[10.5px] leading-none">⌘⏎</kbd>
     </Button>
   </header>
 </template>

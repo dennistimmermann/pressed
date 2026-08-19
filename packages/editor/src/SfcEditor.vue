@@ -1,17 +1,23 @@
 <script setup lang="ts">
 import { editor as monacoEditor, type IRange, MarkerSeverity, Range, Uri } from 'monaco-editor-core'
-import { computed, nextTick, onBeforeUnmount, onMounted, shallowRef, useTemplateRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useTemplateRef, watch } from 'vue'
 import type { EditorHandle } from './editor-handle'
+import { attributeEdit, cursorContext, elementAt, insertAt, insertVar, type CursorContext } from './ast'
+import { insertItems, type InsertItem } from './inspector/insert'
+import type { ComponentSchema } from './types'
 import { getOrCreateModel, startLanguageService } from './monaco/env'
 import { componentUri, ENV_URI, SPRINT_MODULE_URI, sprintEnv } from './monaco/sprint-env'
+import { snippetSfc, snippetUri, SNIPPET_DIR, SNIPPET_NAME, toFileOffset, type SnippetSfc } from './monaco/snippets'
 import { defineSprintTheme } from './monaco/theme'
+import { tabsModel } from './tabs'
 
 /**
  * The Monaco + Volar editor pane (design §3.3).
  *
  * Everything that edits the text from outside — Layers, the Inspector — goes through the
  * `EditorHandle` this exposes, so there is exactly one undo stack and one caret (spec §9c).
- * Inserting is typing (`<`, `{{`) plus the Volar completion; there are no buttons in here.
+ * Inserting is typing (`<`, `{{`) plus the Volar completion, Layers' `+ Insert element`, or
+ * the `+ component` / `+ variable` buttons that follow the caret in a template block.
  */
 const props = withDefaults(
   defineProps<{
@@ -22,8 +28,6 @@ const props = withDefaults(
     /** Library component sources, `{ QrCode: '<script setup>…' }` — hover/props come from these. */
     libraryComponents: Record<string, string>
     filename?: string
-    /** Source range of the element at the caret (drawn as a box); `holes` = its child elements, left un-bolded. */
-    highlight?: { start: number; end: number; holes?: { start: number; end: number }[] } | null
     /**
      * 1-based inclusive model lines to show — the active tab's block (README-tabs §1).
      * Everything outside is hidden, line numbers keep counting. `null` shows the whole file.
@@ -36,8 +40,15 @@ const props = withDefaults(
      * language service reports its own; these are the ones only the compiler knows about.
      */
     markers?: { start: number; end: number; message: string; severity: 'error' | 'warning' }[]
+    /**
+     * `+ component`: library components and this file's snippets, on top of plain HTML filtered
+     * by the enclosing element. Off (no button) when null — the host only passes it in a template block.
+     */
+    insertables?: { components: ComponentSchema[]; snippets: ComponentSchema[] } | null
+    /** `+ variable`: the `row.x` paths, or — inside a snippet scope — its props. Off when null. */
+    variables?: { path: string; hint: string }[] | null
   }>(),
-  { filename: 'Label.vue', visible: null, emptyText: null, markers: () => [] },
+  { filename: 'Label.vue', visible: null, emptyText: null, markers: () => [], insertables: null, variables: null },
 )
 
 const emit = defineEmits<{
@@ -50,14 +61,32 @@ const container = useTemplateRef('container')
 const instance = shallowRef<monacoEditor.IStandaloneCodeEditor>()
 const disposables: { dispose(): void }[] = []
 const caretListeners = new Set<(offset: number) => void>()
+const markerListeners = new Set<() => void>()
 
 const mainUri = () => Uri.parse(`file:///${props.filename}`)
 
 // ---------------------------------------------------------------- the models the worker sees
 
-/** Regenerate the virtual environment: context type, `sprint` module, library sources. */
+/**
+ * `<snippet>` is a custom block, so Volar sees nothing inside it. One virtual `.vue` model per
+ * snippet — the SFC the runtime compiles — gives back type-checking *and* makes the snippet a
+ * known component; `validateSnippets` maps their diagnostics back onto this file.
+ */
+let snippets: SnippetSfc[] = []
+/** Set up in `onMounted` — a debounced re-run of the snippet diagnostics. */
+let scheduleSnippets = () => {}
+
+/** Regenerate the virtual environment: context type, `sprint` module, library and snippet sources. */
 function syncEnvModels() {
-  for (const [uri, text] of Object.entries(sprintEnv(props.contextType, Object.keys(props.libraryComponents)))) {
+  const source = instance.value?.getModel()?.getValue() ?? props.modelValue
+  snippets = tabsModel(source).snippets.filter((s) => SNIPPET_NAME.test(s.name)).map((s) => snippetSfc(source, s))
+  const live = new Set(snippets.map((s) => snippetUri(s.name)))
+  for (const s of snippets) getOrCreateModel(Uri.parse(snippetUri(s.name)), 'vue', s.text)
+  // A renamed or deleted snippet must stop existing, or the language service keeps type-checking it.
+  for (const m of monacoEditor.getModels())
+    if (m.uri.toString().startsWith(SNIPPET_DIR) && !live.has(m.uri.toString())) m.dispose()
+
+  for (const [uri, text] of Object.entries(sprintEnv(props.contextType, Object.keys(props.libraryComponents), snippets.map((s) => s.name)))) {
     getOrCreateModel(Uri.parse(uri), 'typescript', text)
   }
   for (const [name, source] of Object.entries(props.libraryComponents)) {
@@ -109,7 +138,131 @@ const syncUris = () => [
   Uri.parse(ENV_URI),
   Uri.parse(SPRINT_MODULE_URI),
   ...Object.keys(props.libraryComponents).map((name) => Uri.parse(componentUri(name))),
+  ...snippets.map((s) => Uri.parse(snippetUri(s.name))),
 ]
+
+// ---------------------------------------------------------------- insert popup
+// The third insert path, next to Layers' `+ Insert element` and plain typing: a `+` follows the
+// caret wherever something can be dropped in. On a blank template line it offers components /
+// snippets / HTML (filtered by the enclosing element); in text, inside `{{ }}` or in a bound
+// attribute it offers variables. Picking is one edit, i.e. one ⌘Z.
+
+type Mode = 'components' | 'variables'
+type Spot = { modes: Mode[]; context: CursorContext | 'blank' }
+const plus = ref<{ top: number; left: number; modes: Mode[] } | null>(null)
+const popup = ref<{ top: number; left: number; from: number; mode: Mode; context: Spot['context'] } | null>(null)
+const query = ref('')
+const cursor = ref(0)
+/** A `+` without a caret is a button pointing nowhere: only ever show it while the text is focused. */
+const focused = ref(false)
+
+/** What can be inserted at the caret: components and/or variables, and where the caret sits. */
+function spotAt(ed: monacoEditor.IStandaloneCodeEditor): Spot | null {
+  const pos = ed.getPosition(), model = ed.getModel()
+  if (!pos || !model) return null
+  const offset = model.getOffsetAt(pos)
+  const line = model.getLineContent(pos.lineNumber)
+  // Mid-tag (`<di|`, `<div cla|`): the user is typing a tag; nothing to offer until it closes.
+  if (/<[^>]*$/.test(line.slice(0, pos.column - 1))) return null
+  const context = cursorContext(model.getValue(), offset)
+  // A blank line *in a template* takes the whole list. In Full view the caret can also land on a
+  // blank line at the file root or in `<style>`, and only the context tells those apart.
+  if (line.trim() === '' && context === 'text' && props.insertables)
+    return { modes: props.variables ? ['components', 'variables'] : ['components'], context: 'blank' }
+  if (!props.variables) return null
+  if (context === 'text') return { modes: props.insertables ? ['components', 'variables'] : ['variables'], context }
+  if (context === 'interpolation' || context === 'attr-value-binding') return { modes: ['variables'], context }
+  if (context === 'attr-value-static') {
+    // An empty static value can become a binding (`:size="row.x"`); a filled one cannot hold a variable.
+    const el = elementAt(model.getValue(), offset)
+    const prop = el?.props.find((p) => p.valueLoc && offset >= p.valueLoc.start && offset <= p.valueLoc.end)
+    if (prop && !prop.value) return { modes: ['variables'], context }
+  }
+  return null
+}
+
+const items = computed<InsertItem[]>(() => {
+  if (!popup.value) return []
+  const { mode, from } = popup.value
+  let all: InsertItem[]
+  if (mode === 'components') {
+    const parent = elementAt(instance.value?.getValue() ?? '', from)
+    all = insertItems(props.insertables!.components, props.insertables!.snippets, parent?.tag ?? null)
+  } else {
+    // `insertVar` decides `{{ row.x }}` versus bare `row.x` at pick time, from the caret's context.
+    all = (props.variables ?? []).map((v) => ({ name: v.path, kind: 'variable', hint: v.hint, text: '' }))
+  }
+  const q = query.value.trim().toLowerCase()
+  return q ? all.filter((i) => i.name.toLowerCase().includes(q)) : all
+})
+
+/** A parent-illegal row is listed but not pickable (SPEC §4.8), so the cursor never rests on one. */
+const firstPickable = () => Math.max(0, items.value.findIndex((i) => !i.illegal))
+
+function placePlus() {
+  const ed = instance.value
+  const spot = focused.value && ed ? spotAt(ed) : null
+  // Right of the caret's line end, so the buttons never sit on top of text.
+  const line = ed?.getPosition()?.lineNumber
+  const vis = spot && line && ed!.getScrolledVisiblePosition({ lineNumber: line, column: ed!.getModel()!.getLineMaxColumn(line) })
+  plus.value = vis && vis.top >= 0 && vis.height ? { top: vis.top, left: vis.left, modes: spot.modes } : null
+}
+function openPopup(mode: Mode) {
+  const ed = instance.value!
+  const spot = spotAt(ed)
+  const pos = ed.getPosition()!
+  const vis = spot && ed.getScrolledVisiblePosition(pos)
+  if (!spot || !vis) return
+  popup.value = { top: vis.top + vis.height + 4, left: vis.left, from: ed.getModel()!.getOffsetAt(pos), mode, context: spot.context }
+  query.value = ''
+  cursor.value = firstPickable()
+  void nextTick(() => container.value?.querySelector<HTMLInputElement>('.sprint-insert input')?.focus())
+}
+function closePopup(refocus = true) {
+  popup.value = null
+  if (refocus) instance.value?.focus()
+}
+function pick(item: InsertItem | undefined) {
+  if (!item || item.illegal || !popup.value) return
+  const { from, context } = popup.value
+  const model = instance.value!.getModel()!
+  if (item.kind === 'variable') {
+    // `size=""` → `:size="row.x"`: one edit on the attribute; everywhere else a plain insert.
+    let edit
+    if (context === 'attr-value-static') {
+      const el = elementAt(model.getValue(), from)!
+      const prop = el.props.find((p) => p.valueLoc && from >= p.valueLoc.start && from <= p.valueLoc.end)!
+      edit = attributeEdit(el, prop.name, 'set-binding', item.name)
+    } else {
+      edit = insertVar(model.getValue(), from, item.name)
+    }
+    handle.executeEdits([edit])
+    handle.setCaret(edit.start + edit.text.length)
+    return closePopup()
+  }
+  // Multi-line inserts follow the indentation of the line they land on.
+  const pos = model.getPositionAt(from)
+  const indent = model.getLineContent(pos.lineNumber).slice(0, model.getLineFirstNonWhitespaceColumn(pos.lineNumber) - 1 || pos.column - 1)
+  const raw = item.text.replaceAll('\n', '\n' + indent)
+  const caretAt = raw.indexOf('|')
+  const text = raw.replace('|', '')
+  handle.executeEdits([insertAt(from, text)])
+  handle.setCaret(from + (caretAt < 0 ? text.length : caretAt))
+  closePopup()
+}
+/** Arrows step over the illegal rows; Enter inserts, Esc gives the caret back. */
+function moveCursor(delta: number) {
+  for (let i = cursor.value + delta; i >= 0 && i < items.value.length; i += delta)
+    if (!items.value[i].illegal) return void (cursor.value = i)
+}
+function onPopupKey(e: KeyboardEvent) {
+  if (e.key === 'ArrowDown') moveCursor(1)
+  else if (e.key === 'ArrowUp') moveCursor(-1)
+  else if (e.key === 'Enter') pick(items.value[cursor.value])
+  else if (e.key === 'Escape') closePopup()
+  else return
+  e.preventDefault()
+}
 
 // ---------------------------------------------------------------- lifecycle
 
@@ -147,12 +300,10 @@ onMounted(() => {
     codeLens: false,
     occurrencesHighlight: 'off',
     selectionHighlight: false,
-    // No hover cards (Vue SFC docs, type signatures): prop docs live in the components pane and
-    // the property editor. Diagnostics still show as squiggles + Status rows.
-    hover: { enabled: false },
+    // Hover is on so a squiggle explains itself (Volar's type diagnostics are not in Status).
+    hover: { enabled: true, delay: 300, above: false },
     stickyScroll: { enabled: false },
     folding: false, // the tabs are the folding
-    renderLineHighlight: 'none',
   })
   instance.value = ed
   disposables.push(ed)
@@ -162,91 +313,57 @@ onMounted(() => {
   const theme = (ed as unknown as { _themeService: { _theme: { semanticHighlighting: boolean } } })._themeService._theme
   theme.semanticHighlighting = true
 
-  disposables.push(startLanguageService(syncUris))
+  const service = startLanguageService(syncUris)
+  disposables.push(service)
 
-
-  // The element under the caret (host computes it from the AST) gets a tinted box hugging its
-  // text on one line, full width when it spans several. Decorations can't draw a
-  // rectangle wider than a line's text, and a content widget vanishes once its anchor line
-  // scrolls out — so this is an overlay widget positioned by hand and re-laid out on scroll.
-  // `clip` is a plain overflow:hidden wrapper (no clip-path/opacity — those isolate the blend
-  // layers below and turn them black); it hides the part scrolled under the gutter.
-  const clipNode = document.createElement('div')
-  clipNode.className = 'sprint-element-clip'
-  const boxNode = document.createElement('div')
-  boxNode.className = 'sprint-element-box'
-  // Two blend layers (see the CSS): `paper` turns the off-white editor background pure white
-  // under the box, `flash` carries the yellow→clear fade on selection. Text stays crisp under both.
-  boxNode.innerHTML = '<div class="paper"></div><div class="flash"></div>'
-  const flashNode = boxNode.lastElementChild as HTMLElement
-  clipNode.append(boxNode)
-  const box: monacoEditor.IOverlayWidget = { getId: () => 'sprint.element-box', getDomNode: () => clipNode, getPosition: () => null }
-  ed.addOverlayWidget(box)
-  // The element's own text (tags, attributes, text nodes) is bold; child elements are not.
-  const bold = ed.createDecorationsCollection()
-  const markBold = () => {
-    const m = ed.getModel()
-    if (!m || !props.highlight) return bold.set([])
-    const { start, end, holes = [] } = props.highlight
-    const pieces: [number, number][] = []
-    let at = start
-    for (const h of [...holes].sort((x, y) => x.start - y.start)) { if (h.start > at) pieces.push([at, h.start]); at = Math.max(at, h.end) }
-    if (end > at) pieces.push([at, end])
-    bold.set(pieces.map(([s, e]) => {
-      const a = m.getPositionAt(s), b = m.getPositionAt(e)
-      return { range: new Range(a.lineNumber, a.column, b.lineNumber, b.column), options: { inlineClassName: 'sprint-element-bold' } }
-    }))
-  }
-  watch(() => props.highlight, markBold, { deep: true })
-
-  const markElement = () => {
-    const m = ed.getModel()
-    if (!m || !props.highlight) return (clipNode.style.display = 'none')
-    const a = m.getPositionAt(props.highlight.start), b = m.getPositionAt(props.highlight.end)
-    const cw = ed.getOption(monacoEditor.EditorOption.fontInfo).typicalHalfwidthCharacterWidth
-    const { contentLeft, contentWidth } = ed.getLayoutInfo()
-    // Exact pixel offsets from Monaco when the line is rendered; char-width math (drifts on long lines) otherwise.
-    const xOf = (line: number, column: number) => {
-      const exact = ed.getOffsetForColumn(line, column)
-      return contentLeft + (exact >= 0 ? exact : (column - 1) * cw) - ed.getScrollLeft()
+  // Volar only validates models that are attached to an editor, and the snippet models are not:
+  // ask the worker for their diagnostics ourselves and rebase them onto this file. One owner for
+  // all of them and the whole set rewritten every run, so a rename or delete leaves nothing stale.
+  let requestId = 0
+  async function validateSnippets() {
+    const model = ed.getModel()
+    if (!model) return
+    const version = model.getVersionId()
+    const worker = await service.worker.withSyncedResources(syncUris())
+    const out: monacoEditor.IMarkerData[] = []
+    for (const snippet of snippets) {
+      const uri = Uri.parse(snippetUri(snippet.name))
+      const sfc = monacoEditor.getModel(uri)
+      if (!sfc) continue
+      const diagnostics = await worker.getDiagnostics(++requestId, uri)
+      if (model.isDisposed() || model.getVersionId() !== version) return // the text moved under us
+      const at = (p: { line: number; character: number }) =>
+        toFileOffset(snippet, sfc.getOffsetAt({ lineNumber: p.line + 1, column: p.character + 1 }))
+      for (const d of diagnostics) {
+        // Nothing in the file corresponds to the synthesized shorthand wrapper: blame the name.
+        const start = at(d.range.start), end = at(d.range.end)
+        const span = start === null || end === null ? snippet.nameLoc : { start, end }
+        const a = model.getPositionAt(span.start), b = model.getPositionAt(span.end)
+        out.push({
+          message: typeof d.message === 'string' ? d.message : d.message.value,
+          severity: d.severity === 2 ? MarkerSeverity.Warning
+            : d.severity === 3 ? MarkerSeverity.Info
+              : d.severity === 4 ? MarkerSeverity.Hint : MarkerSeverity.Error,
+          startLineNumber: a.lineNumber, startColumn: a.column, endLineNumber: b.lineNumber, endColumn: b.column,
+        })
+      }
     }
-    const textLeft = xOf(a.lineNumber, a.column)
-    const PAD = 6 // px of air around the text; at column 1 it sits in the (empty) 12px decoration gutter
-    const left = textLeft - PAD
-    // Multi-line boxes span the whole scrollable width (so they scroll with the text); a single line hugs its text.
-    const scrollW = Math.max(ed.getScrollWidth(), contentWidth)
-    const right = b.lineNumber > a.lineNumber ? contentLeft + scrollW - ed.getScrollLeft() - 8 : xOf(b.lineNumber, b.column) + PAD
-    const top = ed.getTopForLineNumber(a.lineNumber) - ed.getScrollTop() - 2
-    const height = ed.getBottomForLineNumber(b.lineNumber) - ed.getTopForLineNumber(a.lineNumber) + 4
-    if (height <= 4) return (clipNode.style.display = 'none') // every line of the range is hidden (e.g. <meta>)
-    const M = 16 // room for the drop shadow inside the clip
-    const clipLeft = Math.max(contentLeft - 8, left - M)
-    Object.assign(clipNode.style, { display: 'block', left: `${clipLeft}px`, top: `${top - M}px`, width: `${right + M - clipLeft}px`, height: `${height + 2 * M}px` })
-    Object.assign(boxNode.style, { left: `${left - clipLeft}px`, top: `${M}px`, width: `${right - left}px`, height: `${height}px` })
+    monacoEditor.setModelMarkers(model, 'vue-snippets', out)
   }
-  watch(() => props.highlight, markElement, { deep: true })
-  // A newly selected element flashes: light yellow fading to the resting colour (which the
-  // blend mode turns invisible), so the eye finds the extent without a permanent tint.
-  watch(
-    () => props.highlight && `${props.highlight.start}:${props.highlight.end}`,
-    (key) => {
-      if (!key) return
-      const timing = { duration: 700, easing: 'ease-out', fill: 'forwards' } as const
-      const css = getComputedStyle(flashNode)
-      flashNode.animate([{ background: css.getPropertyValue('--box-flash') }, { background: css.getPropertyValue('--box-rest') }], timing)
-      // The ring goes darker yellow → grey alongside; the drop shadow stays constant.
-      const shadow = getComputedStyle(document.documentElement).getPropertyValue('--box-shadow')
-      const ring = (c: string) => `inset 0 0 0 1px ${c}, ${shadow}`
-      const bcss = getComputedStyle(boxNode)
-      boxNode.animate([{ boxShadow: ring(bcss.getPropertyValue('--ring-flash')) }, { boxShadow: ring(bcss.getPropertyValue('--ring-rest')) }], timing)
-    },
-  )
-  // Hidden areas move every line below them: Split ⇄ Full must re-seat the box as well.
-  disposables.push(ed.onDidChangeConfiguration(markElement), ed.onDidScrollChange(markElement), ed.onDidLayoutChange(markElement), ed.onDidChangeHiddenAreas(markElement))
+  let timer: ReturnType<typeof setTimeout> | undefined
+  scheduleSnippets = () => {
+    clearTimeout(timer)
+    timer = setTimeout(() => void validateSnippets(), 250) // the debounce @volar/monaco uses for its own
+  }
+  disposables.push({ dispose: () => clearTimeout(timer) })
+  scheduleSnippets()
 
   disposables.push(
     ed.onDidChangeModelContent(() => {
       emit('update:modelValue', ed.getValue())
+      // The snippet models are derived text: keep them in step with the file, then re-check.
+      syncEnvModels()
+      scheduleSnippets()
       // Edits shift Monaco's tracked hidden ranges; re-assert ours (a no-op when unchanged) so a
       // multi-line change inside the block cannot leave stale gaps.
       void nextTick(applyVisible)
@@ -255,8 +372,20 @@ onMounted(() => {
       const offset = ed.getModel()!.getOffsetAt(ed.getPosition()!)
       emit('caret', offset)
       for (const cb of caretListeners) cb(offset)
+      placePlus()
+      // The popup belongs to the spot it opened on: moving away closes it (without stealing focus back).
+      if (popup.value && offset !== popup.value.from) closePopup(false)
     }),
+    monacoEditor.onDidChangeMarkers((uris) => {
+      const uri = ed.getModel()?.uri.toString()
+      if (uri && uris.some((u) => u.toString() === uri)) for (const cb of markerListeners) cb()
+    }),
+    ed.onDidScrollChange(placePlus),
+    ed.onDidLayoutChange(placePlus),
+    ed.onDidFocusEditorText(() => { focused.value = true; placePlus() }),
+    ed.onDidBlurEditorText(() => { focused.value = false; plus.value = null }),
   )
+  watch(() => [props.insertables, props.variables], placePlus)
 
   // One tab = one visible line range; everything else is hidden (README-tabs §1). Line numbers
   // keep counting, which is the cheapest proof that this is still one file.
@@ -297,7 +426,7 @@ onBeforeUnmount(() => {
 
 watch(
   () => [props.contextType, props.libraryComponents] as const,
-  () => syncEnvModels(),
+  () => { syncEnvModels(); scheduleSnippets() },
 )
 
 watch(
@@ -368,8 +497,10 @@ const handle: EditorHandle = {
     const ed = instance.value
     if (!ed) return
     const model = ed.getModel()!
-    // One `executeEdits` call with a source id: the batch is a single ⌘Z step, on the
-    // editor's own undo stack (design §3.4 — "undo-able with ⌘Z").
+    // One `executeEdits` call between two undo stops: the batch is a single ⌘Z step of its own,
+    // on the editor's own undo stack (design §3.4 — "undo-able with ⌘Z"). Without the leading
+    // stop Monaco folds the insert into whatever was typed just before it.
+    ed.pushUndoStop()
     ed.executeEdits(
       'sprint',
       edits.map((e) => ({
@@ -383,6 +514,26 @@ const handle: EditorHandle = {
   onCaretChange(cb) {
     caretListeners.add(cb)
     return () => caretListeners.delete(cb)
+  },
+  // Monaco holds both marker sets on the one model (ours as owner `sprint`, the language
+  // service's as `vue`); back to offsets so callers stay Monaco-free.
+  markersIn(range) {
+    const model = instance.value?.getModel()
+    if (!model) return []
+    const offset = (lineNumber: number, column: number) => model.getOffsetAt({ lineNumber, column })
+    return monacoEditor
+      .getModelMarkers({ resource: model.uri })
+      .map((m) => ({
+        start: offset(m.startLineNumber, m.startColumn),
+        end: offset(m.endLineNumber, m.endColumn),
+        message: m.message,
+        severity: m.severity === MarkerSeverity.Error ? ('error' as const) : ('warning' as const),
+      }))
+      .filter((m) => m.start < range.end && m.end > range.start)
+  },
+  onMarkersChange(cb) {
+    markerListeners.add(cb)
+    return () => markerListeners.delete(cb)
   },
   focus: () => instance.value?.focus(),
 }
@@ -399,6 +550,34 @@ defineExpose(handle)
       <p class="body">
         <span v-for="(part, i) in emptyBody" :key="i" :class="{ mono: part.mono, klass: part.klass }">{{ part.text }}</span>
       </p>
+    </div>
+
+    <!-- `+ component` / `+ variable` right of the caret, whichever fit here; the popup hangs under them. -->
+    <div v-if="plus && !popup" class="sprint-plus" :style="{ top: `${plus.top}px`, left: `${plus.left}px` }">
+      <button
+        v-for="mode in plus.modes" :key="mode" type="button" @mousedown.prevent @click="openPopup(mode)"
+      >+ {{ mode === 'components' ? 'component' : 'variable' }}</button>
+    </div>
+    <div v-if="popup" class="sprint-insert" :style="{ top: `${popup.top}px`, left: `${popup.left}px` }" @keydown="onPopupKey">
+      <input
+        v-model="query" :placeholder="popup.mode === 'variables' ? 'variable…' : 'component or element…'"
+        aria-label="filter" @input="cursor = firstPickable()"
+      >
+      <ul role="listbox">
+        <li
+          v-for="(item, i) in items" :key="item.kind + item.name" role="option" :aria-selected="i === cursor"
+          :class="{ on: i === cursor && !item.illegal, off: !!item.illegal }"
+          @mouseenter="item.illegal || (cursor = i)" @mousedown.prevent="pick(item)"
+        >
+          <span
+            class="badge"
+            :class="item.kind === 'html' ? 'html' : item.kind === 'snippet' ? 'snip' : item.kind === 'variable' ? 'var' : 'comp'"
+          >{{ item.kind === 'html' ? '&lt;&gt;' : item.kind === 'snippet' ? 'S' : item.kind === 'variable' ? '{ }' : 'C' }}</span>
+          <span class="name">{{ item.name }}</span>
+          <span class="hint">{{ item.illegal ?? item.hint }}</span>
+        </li>
+        <li v-if="!items.length" class="none">nothing fits here</li>
+      </ul>
     </div>
   </div>
 </template>
@@ -448,51 +627,69 @@ defineExpose(handle)
   color: var(--accent-link);
 }
 
-.sprint-editor .sprint-element-bold {
-  font-weight: 600;
-}
-.sprint-editor .sprint-element-clip {
+/* The one dashed control that floats: `+ component` / `+ variable`, right of the caret's line. */
+.sprint-editor .sprint-plus {
   position: absolute;
-  overflow: hidden;
-  pointer-events: none;
+  z-index: 5;
+  display: flex;
+  gap: 4px;
+  margin: 1px 0 0 10px; /* right of the caret */
 }
-/* The block box is inside the editor text, not chrome — VISUAL-SPEC §3 names its own ring
-   and shadow, so it is the one thing besides the four chrome shadows that casts one. */
-.sprint-editor .sprint-element-box {
-  position: absolute;
+.sprint-editor .sprint-plus button {
+  height: 18px;
+  padding: 0 6px;
+  border: 1px dashed var(--dashed);
   border-radius: var(--radius-control);
-  --ring-flash: var(--box-flash);
-  --ring-rest: var(--box-ring);
-  box-shadow: inset 0 0 0 1px var(--ring-rest), var(--box-shadow);
+  background: var(--pane);
+  color: var(--accent-link);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
 }
-.sprint-editor .sprint-element-box > div {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-}
-/* Above the text, yet reads as "white paper behind it": colour-dodge with a dark grey source
-   pushes near-white backdrop pixels to pure white and leaves dark text almost untouched.
-   #101010 / #f0f0f0 are blend-mode operands, not palette colours — they have no token. */
-.sprint-editor .sprint-element-box > .paper {
-  background: #101010;
-  mix-blend-mode: color-dodge;
-}
-/* The flash multiplies a light yellow in and fades to white (= no-op under multiply). */
-.sprint-editor .sprint-element-box > .flash {
-  --box-rest: var(--pane);
-  background: var(--box-rest);
-  mix-blend-mode: multiply;
-}
-/* Dark theme: the mirror image — colour-burn darkens the backdrop, screen carries the flash. */
-:global(.dark) .sprint-editor .sprint-element-box > .paper {
-  background: #f0f0f0;
-  mix-blend-mode: color-burn;
-}
-:global(.dark) .sprint-editor .sprint-element-box > .flash {
-  --box-rest: var(--sheet-ink);
-  mix-blend-mode: screen;
+.sprint-editor .sprint-plus button:hover {
+  border-color: var(--primary);
+  background: var(--accent);
 }
 
+/* The popup: the same popover as Layers' `+ Insert element` (SPEC §4.8), anchored to the caret. */
+.sprint-editor .sprint-insert {
+  position: absolute;
+  z-index: 60; /* above Monaco's own overlays (the suggest widget is 40) */
+  width: 300px;
+  padding: 6px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-trough);
+  background: var(--popover);
+  box-shadow: var(--shadow-popover);
+}
+.sprint-editor .sprint-insert input {
+  width: 100%; height: 28px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--radius-control);
+  background: var(--field); font-size: 12px; color: var(--foreground); outline: none;
+}
+.sprint-editor .sprint-insert input:focus-visible { border-color: var(--primary); background: var(--pane); }
+.sprint-editor .sprint-insert ul { max-height: 260px; margin: 6px 0 0; padding: 0; overflow: auto; list-style: none; }
+.sprint-editor .sprint-insert li {
+  display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 6px;
+  border-radius: var(--radius-control); cursor: default;
+}
+/* Selection is accent + a 1px inset ring, never a fill (design §1). */
+.sprint-editor .sprint-insert li.on { background: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-border); }
+.sprint-editor .sprint-insert li.off { opacity: 0.45; } /* illegal here — listed, with the reason as its hint */
+.sprint-editor .sprint-insert li.none { color: var(--muted-foreground); font-size: 11px; }
+.sprint-editor .sprint-insert .badge {
+  flex: none; padding: 2.5px 4px; border-radius: var(--radius-badge);
+  font-family: var(--font-sans); font-size: 8.5px; font-weight: 600; line-height: 1;
+}
+.sprint-editor .sprint-insert .badge.comp { background: var(--comp-bg); color: var(--comp-fg); }
+.sprint-editor .sprint-insert .badge.snip { background: var(--info-bg); color: var(--info); }
+.sprint-editor .sprint-insert .badge.html { background: var(--field); color: var(--muted-foreground); }
+.sprint-editor .sprint-insert .badge.var { background: var(--field); color: var(--accent-link); }
+.sprint-editor .sprint-insert .name { font-family: var(--font-mono); font-size: 11.5px; font-weight: 500; }
+.sprint-editor .sprint-insert .hint {
+  margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--meta-foreground);
+}
 
 /* Markers: wavy underline, no ink skipping, so a squiggle under a `.` is still visible. */
 .sprint-editor .squiggly-error,

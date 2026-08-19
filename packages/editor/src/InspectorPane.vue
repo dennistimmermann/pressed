@@ -10,12 +10,14 @@
   an event (or, where the rule already exists, as one text edit through the handle) — one ⌘Z.
 -->
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, useTemplateRef } from 'vue'
+import Msgs from './Msgs.vue'
 import PropertyEditor from './PropertyEditor.vue'
 import StylePane from './StylePane.vue'
+import { aria, hasError, level } from './inspector/markers'
 import { setDeclaration, type Declaration, type Rule, type StyleTarget } from './css'
 import type { ElementInfo, LayerNode, Loc } from './ast'
-import type { EditorHandle } from './editor-handle'
+import type { EditorHandle, Marker } from './editor-handle'
 import type { ComponentSchema } from './types'
 
 type Section = 'props' | 'attributes' | 'style'
@@ -30,18 +32,28 @@ const props = defineProps<{
   handle: EditorHandle | null
   source: string
   /** Inside a snippet scope: its declared props and what the first caller passes in. */
-  scopeProps?: { name: string; type: string; value: string | null; callers: number }[] | null
+  scopeProps?: { name: string; type: string; value: string | null; callers: number; markers?: Marker[] }[] | null
   /** Everything that styles this element, in cascade order (`* · tag · .class · #id`). */
   targets?: StyleTarget[]
-  /** Classes the `+` menu can offer beyond the ones already on the element. */
-  classes?: { name: string; declarations: number }[]
+  /** Classes the `+` menu can offer beyond the ones already on the element, and where each lives. */
+  classes?: { name: string; declarations: number; origin?: string | null }[]
   /** What the `{ }` picker offers on text-y fields. */
   variables?: { path: string; hint: string }[]
+  /** Diagnostics inside `element` — ATTRIBUTES shows each one under the field it belongs to. */
+  markers?: Marker[]
+  /** Diagnostics anywhere in the style block(s) rules come from; the grid keeps the rule's own. */
+  styleMarkers?: Marker[]
   /** Rule mode: the rule at the caret, and the elements it matches. */
   rule?: Rule | null
   usedBy?: LayerNode[]
+  /** Which block that rule lives in: `scopeName` or `null` (the file-level one). */
+  ruleOrigin?: string | null
   /** True inside a snippet scope — the STYLE meta says so. */
   scoped?: boolean
+  /** The active snippet's name, `null` in the file's own scope — the two rule homes. */
+  scopeName?: string | null
+  /** What the host calls its file-level style block (`label`); this pane owns no such word. */
+  rootName?: string
   collapsed?: Partial<Record<Section, boolean>>
   /** The no-selection line; it names the host's own surfaces, so the host writes it. */
   emptyHint: string
@@ -68,6 +80,25 @@ const emit = defineEmits<{
 
 const open = (s: Section) => !props.collapsed?.[s]
 
+// ---------------------------------------------------------------- sections
+// The scroller below the header bar is the one scroller; the layout is CSS (`.head` / `.body`).
+// Which sections exist depends on the mode, so a header's place in the two sticky stacks —
+// `--i` above it, `--below` under it — is read off the rendered list.
+const sections = computed<Section[]>(() => {
+  if (props.kind === 'script') return ['props']
+  if (props.kind === 'rule') return ['props', 'attributes', 'style']
+  return props.scopeProps ? ['props', 'attributes', 'style'] : ['attributes', 'style']
+})
+const vars = (s: Section) => ({ '--i': sections.value.indexOf(s), '--below': sections.value.length - 1 - sections.value.indexOf(s) })
+
+const scroller = useTemplateRef<HTMLElement>('scroller')
+
+/** Toggling a section scrolls it into view; `scroll-margin` keeps it clear of the two stacks. */
+function toggle(s: Section) {
+  emit('toggle', s)
+  void nextTick(() => scroller.value?.querySelector(`[data-sect="${s}"]`)?.scrollIntoView({ block: 'nearest' }))
+}
+
 // ---------------------------------------------------------------- header
 
 const name = computed(() => {
@@ -82,12 +113,33 @@ const name = computed(() => {
 
 // ---------------------------------------------------------------- style pills
 
+/** A pill is a *(selector, origin)* pair: the same `.k` can live in both style blocks. */
+const pillKey = (t: { selector: string; origin?: string | null }) => `${t.selector}@${t.origin ?? ''}`
+/** A rule that came from the file's style block while we are inside a snippet scope. */
+const foreign = (t: { rule: Rule | null; origin?: string | null }) =>
+  props.scopeName != null && !!t.rule && t.origin === null
+
 const picked = ref<string | null>(null)
 /** The pill whose rule the grid edits: the one clicked, else the most specific that applies. */
 const active = computed<StyleTarget | null>(
-  () => props.targets?.find((t) => t.selector === picked.value) ?? props.targets?.at(-1) ?? null,
+  () => props.targets?.find((t) => pillKey(t) === picked.value) ?? props.targets?.at(-1) ?? null,
 )
 const activeRule = computed(() => (props.kind === 'rule' ? props.rule ?? null : active.value?.rule ?? null))
+
+/** The grid edits one rule; it shows the diagnostics that start in it. */
+const ruleMarkers = computed(() => {
+  const rule = activeRule.value
+  return rule ? (props.styleMarkers ?? []).filter((m) => m.start >= rule.start && m.start < rule.end) : []
+})
+/** The selector is everything before `{` — a bad one is reported there, not in the body. */
+const selectorMarkers = computed(() => {
+  const rule = props.rule
+  return rule ? ruleMarkers.value.filter((m) => m.start < rule.bodyStart) : []
+})
+/** …so the grid does not repeat it: rule mode has a SELECTOR field, element mode does not. */
+const gridMarkers = computed(() =>
+  props.kind === 'rule' ? ruleMarkers.value.filter((m) => !selectorMarkers.value.includes(m)) : ruleMarkers.value,
+)
 
 /** The column is narrow and clips its overflow, so the menu is placed in fixed space. */
 const classMenu = ref(false)
@@ -109,17 +161,19 @@ function openClassMenu(event: MouseEvent) {
   classMenu.value = !classMenu.value
 }
 
-function addClass(raw: string) {
+// The rule is created in the active scope's own block; `origin` only says which pill to select
+// afterwards — an existing class keeps the block it already lives in.
+function addClass(raw: string, origin: string | null = props.scopeName ?? null) {
   const cls = raw.trim().replace(/^\./, '')
   classMenu.value = false
   newClass.value = ''
   if (!cls) return
-  picked.value = `.${cls}`
+  picked.value = pillKey({ selector: `.${cls}`, origin })
   emit('add-class', cls)
 }
 function pickSelector(selector: string) {
   classMenu.value = false
-  picked.value = selector
+  picked.value = pillKey({ selector, origin: props.scopeName ?? null })
   emit('ensure-selector', selector)
 }
 
@@ -141,8 +195,6 @@ function renameProp(d: Declaration, prop: string) {
 
 // ---------------------------------------------------------------- rule mode
 
-const pendingDelete = ref(false)
-watch(() => props.rule?.start, () => { pendingDelete.value = false })
 
 function commitRename(event: Event) {
   const next = (event.target as HTMLInputElement).value.trim()
@@ -163,7 +215,15 @@ function addProp() {
   if (name) emit('add-prop', name)
 }
 
+/** PROPS: what Volar says about each `defineProps` member, under the row that declares it. */
+const propMarkers = computed(() => (props.scopeProps ?? []).flatMap((p) => p.markers ?? []))
+
 const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent && !p.name.startsWith('v-')).length ?? 0)
+
+/** The section header says something is wrong in there even while the section is collapsed. */
+const markerLevel = computed(() =>
+  !props.markers?.length ? null : props.markers.some((m) => m.severity === 'error') ? 'error' : 'warning',
+)
 </script>
 
 <template>
@@ -183,36 +243,43 @@ const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent &
 
     <p v-if="!name" class="empty">{{ emptyHint }}</p>
 
-    <div v-else class="min-h-0 flex-1 overflow-y-auto">
+    <div v-else ref="scroller" class="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <!-- ------------------------------------------------------ PROPS / SELECTOR -->
       <template v-if="kind === 'rule'">
-        <button type="button" class="head" @click="emit('toggle', 'props')">
+        <button type="button" class="head" :style="vars('props')" @click="toggle('props')">
           <span class="eyebrow flex-1 text-left">Selector</span>
-          <span class="meta">rename = one edit</span>
+          <span class="meta">{{ scopeName ? (ruleOrigin === null ? `in ${rootName}` : `in snippet ${scopeName}`) : 'rename = one edit' }}</span>
+          <span v-if="level(selectorMarkers)" class="meta dot" :class="level(selectorMarkers)">● {{ selectorMarkers.length }}</span>
           <span class="chev">{{ open('props') ? '▾' : '▸' }}</span>
         </button>
-        <div v-if="open('props')" class="body">
+        <div v-if="open('props')" class="body gap-1" data-sect="props" :style="vars('props')">
           <input
-            :key="rule?.start ?? 0" class="sel" :value="rule?.selector ?? ''" spellcheck="false" aria-label="selector"
+            :key="rule?.start ?? 0" class="sel" :class="{ bad: hasError(selectorMarkers) }" :value="rule?.selector ?? ''"
+            spellcheck="false" aria-label="selector" v-bind="aria('msg-selector', selectorMarkers)"
             @change="commitRename" @keydown.enter="($event.target as HTMLInputElement).blur()"
           >
+          <Msgs id="msg-selector" :markers="selectorMarkers" />
         </div>
       </template>
 
       <template v-else-if="scopeProps || kind === 'script'">
-        <button type="button" class="head" @click="emit('toggle', 'props')">
+        <button type="button" class="head" :style="vars('props')" @click="toggle('props')">
           <span class="eyebrow flex-1 text-left">Props</span>
           <span class="meta">{{ (scopeProps ?? []).length }} · what callers pass in</span>
+          <span v-if="level(propMarkers)" class="meta dot" :class="level(propMarkers)">● {{ propMarkers.length }}</span>
           <span class="chev">{{ open('props') ? '▾' : '▸' }}</span>
         </button>
-        <div v-if="open('props')" class="body gap-2">
-          <div v-for="p in scopeProps ?? []" :key="p.name" class="prop-row">
-            <span>{{ p.name }}</span>
-            <span class="type">{{ p.type }}</span>
-            <span class="flex-1" />
-            <span v-if="p.callers > 1" class="callers">+{{ p.callers - 1 }} callers</span>
-            <span class="passed" :class="{ none: !p.value }">{{ p.value ?? '–' }}</span>
-          </div>
+        <div v-if="open('props')" class="body gap-2" data-sect="props" :style="vars('props')">
+          <template v-for="p in scopeProps ?? []" :key="p.name">
+            <div class="prop-row" :class="{ bad: hasError(p.markers) }" v-bind="aria(`msg-prop-${p.name}`, p.markers)">
+              <span>{{ p.name }}</span>
+              <span class="type">{{ p.type }}</span>
+              <span class="flex-1" />
+              <span v-if="p.callers > 1" class="callers">+{{ p.callers - 1 }} callers</span>
+              <span class="passed" :class="{ none: !p.value }">{{ p.value ?? '–' }}</span>
+            </div>
+            <Msgs :id="`msg-prop-${p.name}`" :markers="p.markers" />
+          </template>
           <p v-if="!scopeProps?.length" class="none">no props yet</p>
           <div v-if="scopeProps">
             <input
@@ -226,14 +293,15 @@ const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent &
 
       <template v-if="kind === 'element'">
         <!-- ---------------------------------------------------- ATTRIBUTES -->
-        <button type="button" class="head hair" @click="emit('toggle', 'attributes')">
+        <button type="button" class="head hair" :style="vars('attributes')" @click="toggle('attributes')">
           <span class="eyebrow flex-1 text-left">Attributes</span>
           <span class="meta">{{ attrCount }}</span>
+          <span v-if="markerLevel" class="meta dot" :class="markerLevel">● {{ markers?.length }}</span>
           <span class="chev">{{ open('attributes') ? '▾' : '▸' }}</span>
         </button>
-        <div v-if="open('attributes')" class="body">
+        <div v-if="open('attributes')" class="body" data-sect="attributes" :style="vars('attributes')">
           <PropertyEditor
-            :element="element" :schema="schema" :handle="handle" :variables="variables"
+            :element="element" :schema="schema" :handle="handle" :variables="variables" :markers="markers"
             @set-text="emit('set-text', $event)" @change-tag="emit('change-tag', $event)"
           />
         </div>
@@ -241,14 +309,14 @@ const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent &
 
       <!-- ------------------------------------------------------ USED BY (rule mode) -->
       <template v-else-if="kind === 'rule'">
-        <button type="button" class="head hair" @click="emit('toggle', 'attributes')">
+        <button type="button" class="head hair" :style="vars('attributes')" @click="toggle('attributes')">
           <span class="eyebrow flex-1 text-left">Used by</span>
           <span class="meta" :class="{ unused: !usedBy?.length }">
             {{ usedBy?.length ? `${usedBy.length} · click to jump` : 'unused' }}
           </span>
           <span class="chev">{{ open('attributes') ? '▾' : '▸' }}</span>
         </button>
-        <div v-if="open('attributes')" class="body row-wrap">
+        <div v-if="open('attributes')" class="body row-wrap" data-sect="attributes" :style="vars('attributes')">
           <button v-for="node in usedBy ?? []" :key="node.loc.start" type="button" class="pill" @click="emit('select', node.loc)">
             {{ node.tag }}<span v-if="node.classes.length" class="cls"> .{{ node.classes.join('.') }}</span>
           </button>
@@ -257,22 +325,25 @@ const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent &
 
       <!-- ------------------------------------------------------------ STYLE -->
       <template v-if="kind !== 'script'">
-        <button type="button" class="head hair" @click="emit('toggle', 'style')">
+        <button type="button" class="head hair" :style="vars('style')" @click="toggle('style')">
           <span class="eyebrow flex-1 text-left">Style</span>
           <span class="meta">
             {{ kind === 'rule' ? `${rule?.declarations.length ?? 0} set` : scoped ? 'applies · in this snippet' : 'applies · cascade order' }}
           </span>
+          <span v-if="level(gridMarkers)" class="meta dot" :class="level(gridMarkers)">● {{ gridMarkers.length }}</span>
           <span class="chev">{{ open('style') ? '▾' : '▸' }}</span>
         </button>
-        <div v-if="open('style')" class="body gap-2">
+        <div v-if="open('style')" class="body gap-2" data-sect="style" :style="vars('style')">
           <!-- Selector pills, cascade order. The active one scopes the grid below. -->
           <div v-if="kind === 'element'" class="row-wrap">
             <button
-              v-for="t in targets ?? []" :key="t.selector" type="button" class="pill"
-              :class="{ on: active?.selector === t.selector, faint: !t.rule }"
-              :title="t.rule ? t.selector : `${t.selector} — no rule yet`" @click="picked = t.selector"
+              v-for="t in targets ?? []" :key="pillKey(t)" type="button" class="pill"
+              :class="{ on: active && pillKey(active) === pillKey(t), faint: !t.rule || foreign(t) }"
+              :title="!t.rule ? `${t.selector} — no rule yet` : !scopeName ? t.selector : foreign(t) ? `${t.selector} — in ${rootName}` : `${t.selector} — in this snippet`"
+              @click="picked = pillKey(t)"
             >
               {{ t.label }}
+              <span v-if="foreign(t)" class="from">{{ rootName }}</span>
               <span v-if="t.kind === 'class'" class="x" title="take this class off the element" @click.stop="emit('detach', t.selector.slice(1))">✕</span>
             </button>
             <span class="add-wrap">
@@ -280,10 +351,12 @@ const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent &
               <template v-if="classMenu">
                 <span class="backdrop" @click="classMenu = false" />
                 <div class="menu" :style="{ top: `${menuPos.top}px`, left: `${menuPos.left}px` }">
-                  <button v-for="c in otherClasses" :key="c.name" type="button" class="item" @click="addClass(c.name)">
+                  <!-- The rule already exists: nothing is created, the row only says where it lives. -->
+                  <button v-for="c in otherClasses" :key="c.name" type="button" class="item" @click="addClass(c.name, c.origin ?? null)">
                     <span class="flex-1 text-left">.{{ c.name }}</span>
-                    <span class="hint">{{ c.declarations }}</span>
+                    <span class="hint">{{ c.declarations }}{{ scopeName ? (c.origin === null ? ` · ${rootName}` : ' · snippet') : '' }}</span>
                   </button>
+                  <!-- These *create* a rule — always in the block of the scope you are editing. -->
                   <button v-for="sel in otherTargets" :key="sel" type="button" class="item" @click="pickSelector(sel)">
                     <span class="flex-1 text-left">{{ sel }}</span>
                     <span class="hint">{{ sel === '*' ? 'every element' : `every ${sel}` }}</span>
@@ -295,22 +368,15 @@ const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent &
           </div>
           <p v-if="kind === 'element' && !targets?.length" class="none">no class on this element yet — add one with +</p>
 
-          <StylePane :rule="activeRule" @set="onSet" @rename-prop="renameProp" />
+          <StylePane :rule="activeRule" :markers="gridMarkers" @set="onSet" @rename-prop="renameProp" />
         </div>
       </template>
     </div>
 
-    <!-- Delete lives at the foot of the pane, and says what it costs. Confirm is inline. -->
+    <!-- Delete lives at the foot of the pane and says what it costs. No confirm: one edit, ⌘Z undoes. -->
     <footer v-if="kind === 'rule' && rule" class="foot">
-      <template v-if="pendingDelete">
-        <span class="flex-1">Delete {{ rule.selector }} and strip it from {{ usedBy?.length ?? 0 }} elements?</span>
-        <button type="button" class="danger" @click="((pendingDelete = false), emit('delete-rule'))">Delete</button>
-        <button type="button" class="cancel" @click="pendingDelete = false">Cancel</button>
-      </template>
-      <template v-else>
-        <button type="button" class="danger" @click="pendingDelete = true">Delete rule…</button>
-        <span class="meta">also strips {{ rule.selector }} from {{ usedBy?.length ?? 0 }} elements</span>
-      </template>
+      <button type="button" class="danger" @click="emit('delete-rule')">Delete rule</button>
+      <span class="meta">also strips {{ rule.selector }} from {{ usedBy?.length ?? 0 }} elements</span>
     </footer>
   </div>
 </template>
@@ -331,17 +397,28 @@ const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent &
 .loc { font-family: var(--font-mono); font-size: 10px; font-weight: 450; color: var(--meta-foreground); }
 .empty { padding: 12px; margin: 0; font-size: 11px; color: var(--muted-foreground); }
 
-/* ---- section header: the Layers pattern, 34px ---- */
+/* ---- section header: the Layers pattern, 34px. Direct children of the scroller, so each one
+       sticks under the `--i` headers above it and over the `--below` ones under it. ---- */
 .head {
   display: flex; align-items: center; gap: 8px; width: 100%; flex: none;
-  height: 34px; padding: 10px 12px 8px; background: transparent; border: 0;
+  height: 34px; padding: 10px 12px 8px; background: var(--pane); border: 0;
+  position: sticky; top: calc(var(--i, 0) * 34px); bottom: calc(var(--below, 0) * 34px); z-index: 2;
 }
 .head.hair { border-top: 1px solid var(--section-border); }
 .eyebrow { font-family: var(--font-sans); font-size: 10px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted-foreground-2); }
 .meta { font-family: var(--font-mono); font-size: 10px; font-weight: 450; color: var(--meta-foreground); }
 .meta.unused { color: var(--warning-foreground); }
+/* Same dot as the block tabs: what is wrong in a section, visible while it is collapsed. */
+.meta.dot { font-weight: 600; }
+.meta.dot.error { color: var(--destructive); }
+.meta.dot.warning { color: var(--warning-foreground); }
 .chev { flex: none; font-size: 8px; color: var(--muted-foreground); }
-.body { display: flex; flex-direction: column; padding: 0 12px 11px; }
+/* Content height plus an equal share of what is left (shrink 0: the pane scrolls, not the section). */
+.body {
+  display: flex; flex-direction: column; flex: 1 0 auto; padding: 0 12px 11px;
+  scroll-margin-top: calc(var(--i, 0) * 34px + 34px);
+  scroll-margin-bottom: calc(var(--below, 0) * 34px);
+}
 .row-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .none { margin: 0; font-size: 11px; color: var(--muted-foreground); }
 
@@ -370,6 +447,9 @@ const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent &
 .pill.on { border-color: var(--primary); background: var(--accent); font-weight: 600; color: var(--accent-foreground); }
 .pill.faint { opacity: 0.6; }
 .pill.dashed { border-style: dashed; border-color: var(--dashed); color: var(--accent-link); }
+/* Where the rule lives, when that is not the scope you are in. */
+.pill .from { font-size: 9px; font-weight: 450; color: var(--meta-foreground); }
+.pill.on .from { color: inherit; }
 .pill .x { font-weight: 400; opacity: 0.6; }
 .pill .x:hover { opacity: 1; color: var(--destructive); }
 .pill .cls { font-size: 10.5px; color: var(--muted-foreground); }
@@ -379,6 +459,8 @@ const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent &
   background: var(--field); font-family: var(--font-mono); font-size: 11px; font-weight: 500; outline: none;
 }
 .sel:focus-visible { border-color: var(--primary); background: var(--pane); }
+/* A diagnostic on this row's own range — same treatment as an attribute field. */
+.sel.bad, .prop-row.bad { border-color: var(--destructive); }
 .more { align-self: flex-start; border: 0; background: transparent; padding: 0; font-family: var(--font-sans); font-size: 10.5px; font-weight: 500; color: var(--accent-link); }
 .more:hover { text-decoration: underline; }
 
@@ -403,14 +485,12 @@ const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent &
 }
 .menu input:focus-visible { border-color: var(--primary); background: var(--pane); }
 
-/* ---- footer: destructive text + inline confirm, never a modal ---- */
+/* ---- footer: destructive text, no confirm ---- */
 .foot {
   display: flex; align-items: center; gap: 8px; flex: none; padding: 10px 12px;
   border-top: 1px solid var(--section-border); font-size: 11px; line-height: 1.35;
 }
 .foot .danger { border: 0; background: transparent; padding: 0; font-size: 11px; font-weight: 500; color: var(--destructive); }
 .foot .danger:hover { text-decoration: underline; }
-.foot .cancel { border: 0; background: transparent; padding: 0; font-size: 11px; color: var(--muted-foreground); }
-.foot .cancel:hover { color: var(--foreground); }
 .foot .meta { font-size: 9.5px; }
 </style>

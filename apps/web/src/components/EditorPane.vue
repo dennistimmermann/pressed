@@ -9,12 +9,14 @@
 import { computed } from 'vue'
 import { librarySources } from '@sprint/core/library/index.ts'
 import { BlockTabs, SfcEditor } from '@sprint/editor'
-import { boxAt } from '@sprint/editor/ast.ts'
 import type { EditorHandle } from '@sprint/editor/editor-handle.ts'
 import type { BlockKind } from '@sprint/editor/tabs.ts'
 import { data } from '@/stores/data'
 import { settings } from '@/stores/settings'
-import { activeBlock, addBlock, badges, editor, filename, formatBlock, handle, offsetOf, switchTab, tabs, visible } from '@/stores/editor'
+import { activeBlock, addBlock, badges, editor, filename, formatBlock, handle, insertables, offsetOf, switchTab, tabs, variables, visible } from '@/stores/editor'
+
+/** Split mode only: the `⇄` that puts the canvas beside the editor lives in this header. */
+defineProps<{ flippable?: boolean }>()
 
 const kind = computed(() => editor.activeTab.kind)
 
@@ -67,10 +69,13 @@ const editorProps = computed(() => ({
   contextType: data.rowType,
   libraryComponents: librarySources,
   filename: filename.value,
-  highlight: boxAt(editor.source, editor.caret),
   visible: visible.value,
   emptyText: emptyText.value,
   markers: markers.value,
+  // The `+ component` / `+ variable` buttons are a template-block thing: nothing to insert
+  // into a `<style>` rule or a `<script>` body, so the props (and with them the buttons) go away.
+  insertables: kind.value === 'template' ? insertables.value : null,
+  variables: kind.value === 'template' ? variables.value : null,
   onCaret: (offset: number) => { editor.caret = offset },
   onReady: (h: EditorHandle) => { handle.value = h },
 }))
@@ -92,8 +97,11 @@ const editorProps = computed(() => ({
           class="view-tab" :class="{ on: settings.editorView === v }" @click="settings.editorView = v"
         >{{ v === 'block' ? 'Split' : 'Full' }}</button>
       </div>
+      <button
+        v-if="flippable" type="button" class="flip" :class="{ on: settings.splitSideBySide }"
+        title="canvas beside the editor" aria-label="flip the split" @click="settings.splitSideBySide = !settings.splitSideBySide"
+      >⇄</button>
       <button type="button" class="text-[11px] text-muted-foreground transition-colors hover:text-foreground" @click="formatBlock">Format</button>
-      <span class="font-mono text-[10px] text-[var(--meta-foreground)]">⇧⌥F · ⌥1…9 · ⌘⌥[ ]</span>
     </header>
 
     <SfcEditor v-bind="editorProps" class="min-h-0 flex-1" />
@@ -131,5 +139,22 @@ const editorProps = computed(() => ({
   box-shadow: var(--shadow-pill);
   font-weight: 600;
   color: var(--foreground);
+}
+/* Small bordered chip on the pane surface; `on` = side by side. */
+.flip {
+  height: 22px;
+  width: 26px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-control);
+  background: var(--field);
+  font-size: 12px;
+  color: var(--muted-foreground);
+  transition: background-color 120ms ease-out, color 120ms ease-out, border-color 120ms ease-out;
+}
+.flip:hover,
+.flip.on {
+  border-color: var(--primary);
+  background: var(--accent);
+  color: var(--accent-foreground);
 }
 </style>

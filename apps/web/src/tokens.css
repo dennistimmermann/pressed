@@ -102,9 +102,6 @@
   /* ── kept: the hover / flash tints VISUAL-SPEC gives as literals, named here
          so no component has to spell a colour of its own ──────────────────── */
   --row-hover:           #fafafa;   /* §3 tree / rule row hover */
-  --box-ring:            #d7d7d7;   /* §3 the block box's 1px ring */
-  --box-flash:           #fff8c8;   /* §3 the block box's 240ms flash */
-  --box-shadow:          0 1px 4px rgba(0,0,0,.09);  /* §3, inside the editor text */
   --code-keyword:        #0451a5;   /* §3 */
   --code-string:         #a31515;   /* §3 */
   --code-expression:     oklch(0.50 0.14 40);  /* §3 names no colour for `{{ }}`: kept */
@@ -190,8 +187,6 @@
   --faint-foreground: oklch(0.58 0.010 60);
   --accent-link: oklch(0.78 0.14 40);
   --row-hover: oklch(0.26 0.010 60);
-  --box-ring: oklch(0.35 0.010 60);
-  --box-flash: oklch(0.35 0.06 95);
   --comp-bg: oklch(0.30 0.04 300);
   --comp-fg: oklch(0.80 0.06 300);
   --code-keyword: oklch(0.76 0.09 215);

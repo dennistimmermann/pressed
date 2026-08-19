@@ -13,10 +13,8 @@ import {
   promoteSnippet, renameSnippet, save, tabs, warningCount, writeMeta,
 } from '@/stores/editor'
 
-defineProps<{ mode?: EditorMode | null; modes?: EditorMode[]; sideBySide?: boolean }>()
-defineEmits<{ 'save-as': []; 'update:mode': [mode: EditorMode]; flip: [] }>()
-
-const pendingDelete = ref<string | null>(null)
+defineProps<{ mode?: EditorMode | null; modes?: EditorMode[] }>()
+defineEmits<{ 'save-as': []; 'update:mode': [mode: EditorMode] }>()
 
 /** `meta.printer` names a device model, not a backend — there is one profile so far. */
 const PRINTER_PROFILES = [{ id: 'K30F', label: 'K30F' }]
@@ -52,8 +50,8 @@ watch(() => editor.labelSetupOpen, (open) => {
       class="on-ink flex-none"
       :dirty="dirty" :size-text="sizeText"
       :error-count="errorCount" :warning-count="warningCount" :saved-at="editor.savedAt ?? undefined"
-      :mode="mode" :modes="modes" :side-by-side="sideBySide"
-      @update:mode="$emit('update:mode', $event)" @flip="$emit('flip')"
+      :mode="mode" :modes="modes"
+      @update:mode="$emit('update:mode', $event)"
       @save="save()" @save-as="$emit('save-as')" @manage="editor.manageOpen = true"
       @label-setup="editor.labelSetupOpen = true"
     />
@@ -61,20 +59,10 @@ watch(() => editor.labelSetupOpen, (open) => {
     <ScopeRow
       class="flex-none"
       :model="tabs" :scope="editor.activeTab.scope" :file="filename" :dirty="dirty" :badges="badges"
-      leave-label="label"
       @leave-scope="leaveScope" @enter-scope="enterScope" @add="addBlock('snippet')"
       @rename="renameSnippet(editor.activeTab.scope ?? '', $event)"
-      @promote="promoteSnippet" @delete="pendingDelete = $event"
+      @promote="promoteSnippet" @delete="deleteSnippet"
     />
-
-    <!-- Deleting a block of the user's file asks first — inline, because a question is not a dialog. -->
-    <div v-if="pendingDelete === editor.activeTab.scope && pendingDelete" class="flex h-[34px] flex-none items-center gap-2 border-b border-[var(--scope-border)] bg-[var(--scope-well)] px-3 text-[12px]">
-      <span>Delete snippet <span class="font-mono">{{ pendingDelete }}</span>? Its uses in the template stay as they are.</span>
-      <button type="button" class="ml-auto h-[26px] rounded-[var(--radius-control)] border border-input px-2 text-[11px] text-destructive hover:bg-card" @click="deleteSnippet(pendingDelete); pendingDelete = null">
-        Delete
-      </button>
-      <button type="button" class="text-[11px] text-muted-foreground hover:text-foreground" @click="pendingDelete = null">Cancel</button>
-    </div>
 
     <!-- Under `Label setup…` in the strip. -->
     <div v-if="editor.labelSetupOpen" ref="setup" class="absolute top-[36px] z-30" :style="{ left: `${setupLeft}px` }">

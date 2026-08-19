@@ -115,7 +115,9 @@ export function insertBlock(source: string, model: TabsModel, kind: BlockKind | 
   const stub: Record<BlockKind | 'snippet', string> = {
     script: '<script setup lang="ts">\n\n</script>',
     template: '<template>\n\n</template>',
-    style: '<style>\n\n</style>',
+    // A snippet's own styles are scoped — the runtime compiles every `<style>` with its own
+    // `scoped` flag, so a snippet block without it would leak into the whole label.
+    style: scope === null ? '<style>\n\n</style>' : '<style scoped>\n\n</style>',
     snippet: `<snippet name="${name}">\n  <template>\n\n  </template>\n</snippet>`,
   }
   if (scope !== null && kind !== 'snippet') {
@@ -125,8 +127,18 @@ export function insertBlock(source: string, model: TabsModel, kind: BlockKind | 
     const indent = (t: string) => t.split('\n').map((l) => (l ? '  ' + l : l)).join('\n')
     if (s.shorthand) {
       const body = source.slice(s.blocks[0].contentStart, s.blocks[0].contentEnd)
-      const parts = [kind === 'script' ? indent(stub.script) : null, indent(`<template>\n${body.trim()}\n</template>`), kind === 'style' ? indent(stub.style) : null].filter(Boolean)
-      return { start: s.blocks[0].contentStart, end: s.blocks[0].contentEnd, text: `\n${parts.join('\n')}\n` }
+      // `props="a b"` only means something on a shorthand body (the loader ignores it once there is a
+      // <template>), so the expansion turns it into a real `defineProps` and drops the attribute —
+      // one edit over the whole open tag + body.
+      const open = source.slice(s.start, s.blocks[0].contentStart)
+      const propsAttr = /\s+props\s*=\s*["']([^"']*)["']/.exec(open)
+      const names = (propsAttr?.[1] ?? '').trim().split(/\s+/).filter(Boolean)
+      const script = names.length
+        ? `<script setup lang="ts">\ndefineProps<{ ${names.map((n) => `${n}: string`).join('; ')} }>()\n</script>`
+        : kind === 'script' ? stub.script : null
+      const parts = [script && indent(script), indent(`<template>\n${body.trim()}\n</template>`), kind === 'style' ? indent(stub.style) : null].filter(Boolean)
+      const head = propsAttr ? open.replace(propsAttr[0], '') : open
+      return { start: s.start, end: s.blocks[0].contentEnd, text: `${head}\n${parts.join('\n')}\n` }
     }
     const order: BlockKind[] = ['script', 'template', 'style']
     const after = s.blocks.filter((b) => order.indexOf(b.kind) < order.indexOf(kind)).sort((a, b) => b.end - a.end)[0]

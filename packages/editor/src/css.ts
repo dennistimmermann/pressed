@@ -18,9 +18,16 @@ export type Rule = {
 /**
  * One thing an element's styling comes from — a global, element, class or id rule. The
  * Inspector's selector pills are this list in cascade order; `rule` is null when the selector
- * has no rule yet (the first edit creates it).
+ * has no rule yet (the first edit creates it). `origin` is the style block the rule lives in:
+ * a snippet's name, `null` for the file-level one, `undefined` while there is no rule at all.
  */
-export type StyleTarget = { kind: 'global' | 'tag' | 'class' | 'id'; selector: string; label: string; rule: Rule | null }
+export type StyleTarget = {
+  kind: 'global' | 'tag' | 'class' | 'id'
+  selector: string
+  label: string
+  rule: Rule | null
+  origin?: string | null
+}
 
 /** Innermost rule containing `offset` inside any `<style>` block (main or snippet). */
 export function ruleAt(source: string, offset: number): Rule | null {

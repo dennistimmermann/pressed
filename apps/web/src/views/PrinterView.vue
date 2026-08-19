@@ -53,7 +53,6 @@ onMounted(refreshDevice)
 
     <p class="font-mono text-[11.5px] text-muted-foreground">
       {{ data.selected.size }} rows · {{ meta.size.width }} × {{ meta.size.height }} mm{{ meta.gap ? ` · gap ${meta.gap}` : '' }}
-      · print with ⌘⏎
     </p>
 
     <p v-if="printer.busy" class="font-mono text-[11.5px] text-muted-foreground">printing…</p>

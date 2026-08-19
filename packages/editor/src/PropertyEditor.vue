@@ -6,10 +6,12 @@
 -->
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { attributeEdit, type ElementInfo, type PropInfo } from './ast'
-import type { EditorHandle } from './editor-handle'
+import { attributeEdit, type ElementInfo, type Loc, type PropInfo } from './ast'
+import type { EditorHandle, Marker } from './editor-handle'
 import type { PropSchema } from '@sprint/core'
 import type { ComponentSchema } from './types'
+import Msgs from './Msgs.vue'
+import { aria as ariaFor, hasError, msgsBy } from './inspector/markers'
 import { htmlAttrsFor } from './inspector/html-attrs'
 import { HTML_TAGS, isHtmlTag } from './inspector/insert'
 
@@ -20,6 +22,8 @@ const props = defineProps<{
   handle: EditorHandle | null
   /** What the `{ }` picker offers: `row.*` paths, or a snippet's props. */
   variables?: { path: string; hint: string }[]
+  /** Diagnostics anywhere in `element` — each field shows the ones on its own range. */
+  markers?: Marker[]
 }>()
 const emit = defineEmits<{
   'change-tag': [tag: string]
@@ -91,6 +95,27 @@ function controlFor(schema: PropSchema | undefined, prop: PropInfo | undefined):
 }
 
 const value = (field: Field) => field.prop?.value ?? ''
+
+/**
+ * The element's diagnostics, split over the rows that own their source range — so
+ * `Property 'filament' does not exist on type Row` sits under the field you fix it in.
+ * A marker belongs to the row it *starts* in: the compiler reports a point and the squiggle
+ * runs to the end of the line, which would otherwise claim every attribute after it. What
+ * starts in no field and in no child element is the element's own and shows under `tag`.
+ */
+const msgs = computed<Record<string, Marker[]>>(() => {
+  const el = props.element
+  const all = props.markers ?? []
+  if (!el || !all.length) return {}
+  const rows: { key: string; loc: Loc }[] = el.text ? [{ key: 'text', loc: el.text }] : []
+  for (const f of fields.value) if (f.prop) rows.push({ key: f.name, loc: f.prop.loc })
+  // The host already dropped the children's markers; what no field claims belongs to the tag.
+  const { '': rest = [], ...out } = msgsBy(all, rows)
+  return rest.length ? { ...out, tag: rest } : out
+})
+
+const bad = (key: string) => hasError(msgs.value[key])
+const aria = (key: string) => ariaFor(`msg-${key}`, msgs.value[key])
 
 function commit(name: string, kind: 'set-static' | 'set-binding' | 'remove', text?: string | boolean) {
   if (!props.element || !props.handle) return
@@ -171,34 +196,40 @@ watch(
 <template>
   <div v-if="element" class="attrs">
     <!-- The element's own text, when it has no child elements. `{{ }}` is code: mono. -->
-    <div v-if="element.text" class="field">
+    <div v-if="element.text" class="field" :class="{ bad: bad('text') }">
       <label for="prop-text" class="key">text</label>
       <div class="line">
         <textarea
           v-if="element.text.value.includes('\n')"
-          id="prop-text" rows="3" class="ctl tall" :value="element.text.value"
+          id="prop-text" rows="3" class="ctl tall" :value="element.text.value" v-bind="aria('text')"
           @change="emit('set-text', onInput($event))"
         />
         <input
           v-else id="prop-text" type="text" class="ctl" :class="element.text.value.includes('{{') ? '' : 'prose'"
-          :value="element.text.value" @change="emit('set-text', onInput($event))"
+          :value="element.text.value" v-bind="aria('text')" @change="emit('set-text', onInput($event))"
         >
         <button v-if="variables?.length" type="button" class="pick" title="insert a variable" @click="openPicker($event, 'text')">{ }</button>
       </div>
+      <Msgs id="msg-text" :markers="msgs.text" />
     </div>
 
-    <div class="field">
+    <div class="field" :class="{ bad: bad('tag') }">
       <label for="prop-tag" class="key">tag</label>
       <select
         id="prop-tag" class="ctl" :value="element.tag" :disabled="!isHtmlTag(element.tag)"
         :title="isHtmlTag(element.tag) ? 'change the tag' : 'components keep their name'"
-        @change="emit('change-tag', ($event.target as HTMLSelectElement).value)"
+        v-bind="aria('tag')" @change="emit('change-tag', ($event.target as HTMLSelectElement).value)"
       >
         <option v-for="tag in tagOptions" :key="tag" :value="tag">{{ tag }}</option>
       </select>
+      <!-- Whatever no field owns: an unknown component, a prop the schema does not have. -->
+      <Msgs id="msg-tag" :markers="msgs.tag" />
     </div>
 
-    <div v-for="f in fields" :key="f.name" class="field" :class="{ wide: f.control === 'expression' }" :title="f.hint">
+    <div
+      v-for="f in fields" :key="f.name" class="field"
+      :class="{ wide: f.control === 'expression', bad: bad(f.name) }" :title="f.hint"
+    >
       <label :for="`prop-${f.name}`" class="key">
         {{ f.name }}<span v-if="f.prop?.isBinding" class="bound">:</span>
       </label>
@@ -207,7 +238,7 @@ watch(
       <div v-if="f.control === 'expression'" class="line">
         <input
           :id="`prop-${f.name}`" class="ctl expr" :value="value(f)" spellcheck="false" placeholder="–"
-          @change="setExpression(f, onInput($event))"
+          v-bind="aria(f.name)" @change="setExpression(f, onInput($event))"
         >
         <button v-if="variables?.length" type="button" class="pick" title="insert a variable" @click="openPicker($event, f.name)">{ }</button>
       </div>
@@ -215,12 +246,12 @@ watch(
       <input
         v-else-if="f.control === 'number'" :id="`prop-${f.name}`" type="number" step="0.1" class="ctl"
         :value="value(f).replace(/[a-z]+$/i, '')" :placeholder="String(f.schema?.default ?? '–')"
-        @change="setStatic(f, onInput($event) + (f.schema?.format === 'mm' ? 'mm' : ''))"
+        v-bind="aria(f.name)" @change="setStatic(f, onInput($event) + (f.schema?.format === 'mm' ? 'mm' : ''))"
       >
 
       <select
         v-else-if="f.control === 'enum'" :id="`prop-${f.name}`" class="ctl" :value="value(f)"
-        @change="setStatic(f, onInput($event))"
+        v-bind="aria(f.name)" @change="setStatic(f, onInput($event))"
       >
         <option value="">–</option>
         <option v-for="option in f.schema?.values ?? []" :key="option" :value="option">{{ option }}</option>
@@ -228,13 +259,14 @@ watch(
 
       <input
         v-else-if="f.control === 'boolean'" :id="`prop-${f.name}`" type="checkbox" class="check"
-        :checked="!!f.prop" @change="commit(f.name, ($event.target as HTMLInputElement).checked ? 'set-static' : 'remove', true)"
+        :checked="!!f.prop" v-bind="aria(f.name)"
+        @change="commit(f.name, ($event.target as HTMLInputElement).checked ? 'set-static' : 'remove', true)"
       >
 
       <div v-else-if="f.control === 'color'" class="line">
         <input
           :id="`prop-${f.name}`" type="color" class="swatch" :value="value(f) || '#000000'"
-          @change="setStatic(f, onInput($event))"
+          v-bind="aria(f.name)" @change="setStatic(f, onInput($event))"
         >
         <input class="ctl" :value="value(f)" aria-label="hex value" placeholder="–" @change="setStatic(f, onInput($event))">
       </div>
@@ -242,10 +274,12 @@ watch(
       <div v-else class="line">
         <input
           :id="`prop-${f.name}`" type="text" class="ctl" :value="value(f)"
-          :placeholder="String(f.schema?.default ?? '–')" @change="setStatic(f, onInput($event))"
+          :placeholder="String(f.schema?.default ?? '–')" v-bind="aria(f.name)" @change="setStatic(f, onInput($event))"
         >
         <button v-if="variables?.length" type="button" class="pick" title="insert a variable" @click="openPicker($event, f.name)">{ }</button>
       </div>
+
+      <Msgs :id="`msg-${f.name}`" :markers="msgs[f.name]" />
     </div>
 
     <div class="add">
@@ -295,6 +329,8 @@ watch(
 }
 .ctl::placeholder { color: var(--faint-foreground); }
 .ctl:focus-visible { border-color: var(--primary); background: var(--pane); }
+/* A diagnostic on this field's own range — the message the editor only shows on hover. */
+.field.bad .ctl, .field.bad .swatch { border-color: var(--destructive); }
 .ctl.tall { height: auto; padding: 4px 8px; line-height: 1.5; }
 /* Prose is prose (CLAUDE.md); text with `{{ }}` in it is code and stays mono. */
 .ctl.prose { font-family: var(--font-sans); font-size: 11px; }

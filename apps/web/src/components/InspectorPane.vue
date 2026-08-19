@@ -10,8 +10,9 @@ import { InspectorPane as Inspector } from '@sprint/editor'
 import type { Loc } from '@sprint/editor/ast.ts'
 import {
   addClassToElement, addProp, availableClasses, caretLine, changeSelectedTag, declare, deleteRule,
-  editor, element, elementSchema, ensureSelector, goToOffset, handle, removeClassFromElement,
-  renameRule, ruleAtCaret, ruleUsage, scopeProps, setSelectedText, styleTargets, variables,
+  editor, element, elementMarkers, elementSchema, ensureSelector, goToOffset, handle,
+  removeClassFromElement, renameRule, ruleAtCaret, ruleOrigin, ruleUsage, scopeProps, setSelectedText,
+  styleMarkers, styleTargets, variables,
 } from '@/stores/editor'
 import { settings } from '@/stores/settings'
 
@@ -49,9 +50,14 @@ const locator = computed(() => {
     :targets="styleTargets"
     :classes="availableClasses()"
     :variables="variables"
+    :markers="elementMarkers"
+    :style-markers="styleMarkers"
     :rule="ruleAtCaret"
     :used-by="ruleUsage"
+    :rule-origin="ruleOrigin"
     :scoped="editor.activeTab.scope !== null"
+    :scope-name="editor.activeTab.scope"
+    root-name="label"
     :collapsed="settings.inspectorCollapsed"
     :empty-hint="kind === 'rule' ? 'pick a rule in Layers or put the caret in one' : 'pick an element in Layers or on the label'"
     @toggle="toggle"

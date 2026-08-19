@@ -1,4 +1,4 @@
-import { computed, nextTick, reactive, shallowRef, toRaw, watch } from 'vue'
+import { computed, nextTick, reactive, ref, shallowRef, toRaw, watch } from 'vue'
 import { parseMeta } from '@sprint/core/template/meta.ts'
 import { labelDocument } from '@sprint/core/template/label.ts'
 import { RenderSuperseded } from '@sprint/editor/runtime-client.ts'
@@ -50,6 +50,14 @@ export const editor = reactive({
 
 /** The text editor's handle (WP1 hands it over on `ready`); shallow — it is functions, not data. */
 export const handle = shallowRef<EditorHandle | null>(null)
+
+/** Monaco owns the markers; this bumps whenever they change (see `elementMarkers`). */
+const markerTick = ref(0)
+let stopMarkers: (() => void) | undefined
+watch(handle, (h) => {
+  stopMarkers?.()
+  stopMarkers = h?.onMarkersChange(() => markerTick.value++)
+})
 
 export const meta = computed(() => parseMeta(editor.source).meta)
 export const dirty = computed(() => editor.source !== editor.savedSource)
@@ -164,6 +172,33 @@ const norm = (name: string) => name.replace(/-/g, '').toLowerCase()
 export const elementSchema = computed(
   () => editor.components.find((c) => element.value && norm(c.name) === norm(element.value.tag)) ?? null,
 )
+/**
+ * Every diagnostic on the caret's element itself — the compiler's *and* the language service's
+ * (`Property 'x' does not exist…`) — minus those that start inside a child element: a parent
+ * does not report its children's errors. The Inspector matches them against the ranges it
+ * already has, so a wrong attribute says why where you edit it, not only on hover in the editor.
+ */
+export const elementMarkers = computed(() => {
+  void markerTick.value // markers live in Monaco; the tick is what makes reading them reactive
+  const el = element.value
+  if (!el || !handle.value) return []
+  return handle.value.markersIn(el.loc).filter((m) => !el.children.some((c) => m.start >= c.start && m.start < c.end))
+})
+/**
+ * Every diagnostic in the style block(s) the Inspector and Layers read rules from — the scope's
+ * own and, inside a snippet, the label's as well (same pair `styleTargets` collects rules from).
+ * The panes filter it down to one rule; markers are Monaco's, so the tick makes it reactive.
+ */
+export const styleMarkers = computed(() => {
+  void markerTick.value
+  const h = handle.value
+  if (!h) return []
+  const scope = editor.activeTab.scope
+  return (scope === null ? [null] : [scope, null])
+    .flatMap((sc) => blockOf(tabs.value, { scope: sc, kind: 'style' }) ?? [])
+    .flatMap((block) => h.markersIn(block))
+})
+
 export const caretLine = computed(
   () => editor.source.slice(0, element.value?.loc.start ?? editor.caret).split('\n').length,
 )
@@ -227,12 +262,6 @@ watch(() => [editor.caret, settings.editorView] as const, ([caret, view]) => {
   const tab = tabAt(tabs.value, caret)
   if (tab && tabKey(tab) !== tabKey(editor.activeTab)) editor.activeTab = tab
 })
-
-/** Strip order across the whole file — the label's blocks, then each snippet's (for `⌘⌥[ ]`). */
-export const allTabs = computed<TabRef[]>(() => [
-  ...tabs.value.blocks.map((b) => ({ scope: null, kind: b.kind })),
-  ...tabs.value.snippets.flatMap((s) => s.blocks.map((b) => ({ scope: s.name, kind: b.kind }))),
-])
 
 export type Badge = { level: 'error' | 'warning'; count: number }
 
@@ -299,14 +328,6 @@ export function leaveScope() {
   if (kind) switchTab({ scope: null, kind })
 }
 
-/** `⌘⌥[` / `⌘⌥]` — one flat ring through every tab in the file. */
-export function cycleTab(step: 1 | -1) {
-  const list = allTabs.value
-  if (!list.length) return
-  const i = list.findIndex((t) => tabKey(t) === tabKey(editor.activeTab))
-  switchTab(list[(i + step + list.length) % list.length])
-}
-
 /** Every edit goes through the handle so it shares the editor's one undo stack (design §3.4). */
 function applyEdits(edits: Edit[]) {
   if (handle.value) return handle.value.executeEdits(edits)
@@ -350,37 +371,66 @@ export function ruleFor(cls: string) {
 
 export type { StyleTarget }
 
-/** All rules that apply to the element at the caret (simple selectors, comma lists), lowest specificity first. */
+/**
+ * Which style block a rule lives in — a snippet's name, or `null` for the file-level one.
+ * Inside a snippet scope the panes read two blocks, and every rule has to say which.
+ */
+export function originOf(rule: Rule): string | null {
+  const scope = editor.activeTab.scope
+  const block = scope === null ? undefined : blockOf(tabs.value, { scope, kind: 'style' })
+  return block && rule.start >= block.start && rule.end <= block.end ? scope : null
+}
+
+/** Every rule visible from the current scope, file-level first — cascade order, the scoped one wins. */
+function visibleRules(): { origin: string | null; rule: Rule }[] {
+  const scope = editor.activeTab.scope
+  const out: { origin: string | null; rule: Rule }[] = []
+  for (const sc of scope === null ? [null] : [null, scope]) {
+    const block = blockOf(tabs.value, { scope: sc, kind: 'style' })
+    if (block) for (const rule of rulesIn(editor.source, block.start, block.end)) out.push({ origin: sc, rule })
+  }
+  return out
+}
+
+/**
+ * All rules that apply to the element at the caret (simple selectors, comma lists), lowest
+ * specificity first. One pill per *(selector, origin)*: with `.k` in both blocks you get two,
+ * the file's then the snippet's, which is the order they cascade in.
+ */
 export const styleTargets = computed<StyleTarget[]>(() => {
   const el = element.value
   if (!el) return []
   const attr = (name: string) => el.props.find((p) => p.name === name && !p.isBinding)?.value
   const classes = attr('class')?.split(/\s+/).filter(Boolean) ?? []
   const id = attr('id')?.trim()
-  const scope = editor.activeTab.scope
-  const rules: Rule[] = []
-  for (const sc of scope === null ? [null] : [scope, null]) {
-    const block = blockOf(tabs.value, { scope: sc, kind: 'style' })
-    if (block) rules.push(...rulesIn(editor.source, block.start, block.end))
+  const rules = visibleRules()
+  const forSelector = (kind: StyleTarget['kind'], selector: string): StyleTarget[] => {
+    const hits = rules.filter((r) => r.rule.selector.split(',').some((part) => part.trim() === selector))
+    return hits.length
+      ? hits.map((h) => ({ kind, selector, label: selector, rule: h.rule, origin: h.origin }))
+      : [{ kind, selector, label: selector, rule: null }]
   }
-  const find = (sel: string) => rules.find((r) => r.selector.split(',').some((part) => part.trim() === sel)) ?? null
   const targets: StyleTarget[] = [
-    { kind: 'global', selector: '*', label: '*', rule: find('*') },
-    { kind: 'tag', selector: el.tag, label: el.tag, rule: find(el.tag) },
-    ...classes.map((c) => ({ kind: 'class' as const, selector: `.${c}`, label: `.${c}`, rule: find(`.${c}`) })),
-    ...(id ? [{ kind: 'id' as const, selector: `#${id}`, label: `#${id}`, rule: find(`#${id}`) }] : []),
+    ...forSelector('global', '*'),
+    ...forSelector('tag', el.tag),
+    ...classes.flatMap((c) => forSelector('class', `.${c}`)),
+    ...(id ? forSelector('id', `#${id}`) : []),
   ]
   // Globals and element rules only show up when they exist; classes/ids are the element's own and always show.
   return targets.filter((t) => t.rule || t.kind === 'class' || t.kind === 'id')
 })
 
-/** Make sure a rule with this selector exists in the scope's style block. Returns the offset inside its braces. */
+/**
+ * Make sure a rule with this selector exists in the *active scope's* style block. Returns the
+ * offset inside its braces. Creation always lands in the block you are editing — inside a
+ * snippet that is its own scoped block; the label's is one ⌥⇧← away.
+ */
 export function ensureSelector(selector: string): number {
-  const rules = (blockOf(tabs.value, { scope: editor.activeTab.scope, kind: 'style' }) as TabBlock | undefined)
+  const scope = editor.activeTab.scope
+  const rules = (blockOf(tabs.value, { scope, kind: 'style' }) as TabBlock | undefined)
   const existing = rules && rulesIn(editor.source, rules.start, rules.end).find((r) => r.selector.split(',').some((p) => p.trim() === selector))
   if (existing) return existing.bodyStart + 1
-  const scope = editor.activeTab.scope
-  if (!blockOf(tabs.value, { scope, kind: 'style' })) applyEdits([insertBlock(editor.source, tabs.value, 'style', undefined, scope)])
+  if (!rules) applyEdits([insertBlock(editor.source, tabs.value, 'style', undefined, scope)])
   const block = blockOf(tabsModel(editor.source), { scope, kind: 'style' })!
   const body = editor.source.slice(block.contentStart, block.contentEnd)
   const text = `${body.trimEnd() ? '\n' : ''}${selector} {  }\n`
@@ -390,21 +440,25 @@ export function ensureSelector(selector: string): number {
 }
 
 /** Single-class rules visible from the current scope (snippet's own style + the label's), by name. */
-export function availableClasses(): { name: string; declarations: number }[] {
+export function availableClasses(): { name: string; declarations: number; origin: string | null }[] {
   const scope = editor.activeTab.scope
-  const out = new Map<string, number>()
+  const out = new Map<string, { name: string; declarations: number; origin: string | null }>()
+  // Snippet's own first, so a class defined in both is offered as the one that wins.
   for (const sc of scope === null ? [null] : [scope, null]) {
     const block = blockOf(tabs.value, { scope: sc, kind: 'style' })
     if (!block) continue
     for (const r of rulesIn(editor.source, block.start, block.end)) {
       const cls = /^\.([\w-]+)$/.exec(r.selector)?.[1]
-      if (cls && !out.has(cls)) out.set(cls, r.declarations.length)
+      if (cls && !out.has(cls)) out.set(cls, { name: cls, declarations: r.declarations.length, origin: sc })
     }
   }
-  return [...out].map(([name, declarations]) => ({ name, declarations }))
+  return [...out.values()]
 }
 
-/** Make sure `.cls { }` exists in this scope's style block (adding the block first if needed). Returns its offset. */
+/**
+ * Make sure `.cls { }` exists (adding the style block first if needed). Returns its offset.
+ * An existing rule, wherever the scope sees it from, wins over creating a new one.
+ */
 export function ensureRule(cls: string): number {
   const existing = ruleFor(cls)
   return existing ? existing.bodyStart + 1 : ensureSelector(`.${cls}`)
@@ -573,6 +627,12 @@ export const canFor = (loc: Loc) => capabilities(elementAt(editor.source, loc.st
 /** What `Wrap ▾` offers on top of its own div/span/p: the library, then this file's snippets. */
 export const wrapChoices = computed(() => [...LIBRARY_NAMES, ...tabs.value.snippets.map((s) => s.name)])
 
+/** What every insert popup offers — Layers' `+ Insert element` and the editor's `+ component`. */
+export const insertables = computed(() => ({
+  components: editor.components.filter((c) => LIBRARY_NAMES.includes(c.name)),
+  snippets: editor.components.filter((c) => !LIBRARY_NAMES.includes(c.name)),
+}))
+
 /**
  * The template block of the scope we are in — what Layers shows on *every* block tab
  * (SPEC §4.2), not only while the template tab is the active one.
@@ -583,21 +643,63 @@ export const layers = computed<LayerNode[]>(() =>
   scopeTemplate.value ? elementTree(editor.source, scopeTemplate.value) : [],
 )
 
+/**
+ * Elements (by `loc.start`) with at least one *error* marker of their own — on the tag or an
+ * attribute, not inside a child. The Layers row gets a red dot in front of the name.
+ */
+export const erroredElements = computed(() => {
+  void markerTick.value
+  const block = scopeTemplate.value
+  if (!block || !handle.value) return new Set<number>()
+  const errors = handle.value.markersIn({ start: block.start, end: block.end }).filter((m) => m.severity === 'error')
+  const out = new Set<number>()
+  const walk = (nodes: LayerNode[]) => {
+    for (const n of nodes) {
+      const own = (m: { start: number }) => m.start >= n.loc.start && m.start < n.loc.end && !n.children.some((c) => m.start >= c.loc.start && m.start < c.loc.end)
+      if (errors.some(own)) out.add(n.loc.start)
+      walk(n.children)
+    }
+  }
+  walk(layers.value)
+  return out
+})
+
 /** `N elements` — the tab strip already counts them for the same block. */
 export const layerCount = computed(() => scopeTemplate.value?.count ?? 0)
 
-/** Layers RULES: the scope's own style block, each rule with how many elements it matches. */
+/**
+ * Layers RULES: the scope's own style block, each rule with how many elements it matches — and,
+ * inside a snippet, the file-level rules that reach into it as well (`origin: null`), so a rule
+ * that styles what you see is never simply missing from the list.
+ */
 export const scopeRules = computed(() => {
-  const block = blockOf(tabs.value, { scope: editor.activeTab.scope, kind: 'style' })
-  if (!block) return []
-  return rulesIn(editor.source, block.start, block.end)
-    .map((rule) => ({ rule, selector: rule.selector, start: rule.start, uses: countMatching(layers.value, rule.selector) }))
+  const scope = editor.activeTab.scope
+  const row = (rule: Rule, origin: string | null) => ({
+    rule,
+    selector: rule.selector,
+    start: rule.start,
+    origin,
+    uses: countMatching(layers.value, rule.selector),
+    markers: styleMarkers.value.filter((m) => m.start >= rule.start && m.start < rule.end),
+  })
+  const own = blockOf(tabs.value, { scope, kind: 'style' })
+  const rows = own ? rulesIn(editor.source, own.start, own.end).map((r) => row(r, scope)) : []
+  if (scope === null) return rows
+  const file = blockOf(tabs.value, { scope: null, kind: 'style' })
+  if (!file) return rows
+  const reaching = rulesIn(editor.source, file.start, file.end)
+    .filter((r) => matchingElements(layers.value, r.selector).length > 0)
+    .map((r) => row(r, null))
+  return [...rows, ...reaching]
 })
 
 /** The rule the caret sits in while a style block is active — the ringed RULES row. */
 export const ruleAtCaret = computed(() =>
   editor.activeTab.kind === 'style' ? ruleAt(editor.source, editor.caret) : null,
 )
+
+/** Which block that rule lives in — the Inspector's SELECTOR meta and the direction of `Move`. */
+export const ruleOrigin = computed(() => (ruleAtCaret.value ? originOf(ruleAtCaret.value) : null))
 
 /** Layers SCRIPT: a snippet's props (from the compiler) and the block's size. Null = no script block. */
 export const scriptInfo = computed(() => {
@@ -658,9 +760,11 @@ export function promoteSnippet(name: string) {
  * when the compiler grows it; the shape here is already what the pane wants.
  */
 export const scopeProps = computed(() => {
+  void markerTick.value
   const scope = editor.activeTab.scope
   if (scope === null) return null
   const schema = editor.components.find((c) => c.name === scope)
+  const locs = propLocs(scope)
   const calls = [...editor.source.matchAll(new RegExp(`<${escapeRe(scope)}(\\s[^>]*?)?/?>`, 'g'))].map((m) => m[1] ?? '')
   const passed = (name: string) => {
     const m = new RegExp(`(:?)${escapeRe(name)}="([^"]*)"`).exec(calls[0] ?? '')
@@ -671,8 +775,48 @@ export const scopeProps = computed(() => {
     type: `${p.type}${p.required ? '' : '?'}`,
     value: passed(p.name),
     callers: calls.length,
+    markers: locs[p.name] && handle.value ? handle.value.markersIn(locs[p.name]) : [],
   }))
 })
+
+/**
+ * Where each declared prop is *written* — the `props="a b"` attribute of a shorthand snippet,
+ * or its `defineProps<{ … }>` member. The compiler's schema has no source range, and the PROPS
+ * rows need one to claim the diagnostics on it. Same two spots `addProp` writes into.
+ * ponytail: Volar does not look inside `<snippet>` blocks (they are not SFC blocks), so today
+ * only our own compiler messages can land on a prop row. The routing is here for when it does.
+ */
+function propLocs(scope: string): Record<string, { start: number; end: number }> {
+  const source = editor.source
+  const snippet = tabs.value.snippets.find((s) => s.name === scope)
+  const out: Record<string, { start: number; end: number }> = {}
+  if (!snippet) return out
+
+  if (snippet.shorthand) {
+    const head = source.slice(snippet.start, source.indexOf('>', snippet.start))
+    const attr = /props="([^"]*)"/.exec(head)
+    if (!attr) return out
+    const base = snippet.start + attr.index + 'props="'.length
+    for (const m of attr[1].matchAll(/[\w-]+/g)) out[m[0]] = { start: base + m.index, end: base + m.index + m[0].length }
+    return out
+  }
+
+  const script = snippet.blocks.find((b) => b.kind === 'script')
+  if (!script) return out
+  const text = source.slice(script.contentStart, script.contentEnd)
+  const from = text.indexOf('defineProps<{')
+  const close = from < 0 ? -1 : text.indexOf('}>', from)
+  if (close < 0) return out
+  const base = script.contentStart + from + 'defineProps<{'.length
+  const inner = text.slice(from + 'defineProps<{'.length, close)
+  let at = 0
+  for (const member of inner.split(/[;\n]/)) {
+    const m = /^(\s*)([\w-]+)\??\s*:/.exec(member)
+    if (m) out[m[2]] = { start: base + at + m[1].length, end: base + at + member.trimEnd().length }
+    at += member.length + 1
+  }
+  return out
+}
 
 /** What the Inspector's `{ }` picker offers: flat `row.*` leaves, or — in a scope — its props. */
 export const variables = computed<{ path: string; hint: string }[]>(() => {

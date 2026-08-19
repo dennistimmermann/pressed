@@ -7,8 +7,15 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { parseLength, type Declaration, type Rule } from './css'
+import type { Marker } from './editor-handle'
+import Msgs from './Msgs.vue'
+import { aria, hasError, msgsBy } from './inspector/markers'
 
-const props = defineProps<{ rule: Rule | null }>()
+const props = defineProps<{
+  rule: Rule | null
+  /** Diagnostics inside the rule — each declaration shows the ones on its own range. */
+  markers?: Marker[]
+}>()
 const emit = defineEmits<{
   /** Set (or, with `null`, remove) one declaration. */
   set: [prop: string, value: string | null]
@@ -18,6 +25,15 @@ const emit = defineEmits<{
 
 const get = (prop: string) => props.rule?.declarations.find((d) => d.prop === prop)?.value
 const set = (prop: string, value: string | null) => emit('set', prop, value === '' ? null : value)
+
+/** A declaration's own diagnostics, under the control that writes it. `''` = in the rule but in
+ *  no declaration (a stray token, the selector): those go under `all properties…`. */
+const byDecl = computed(() =>
+  msgsBy(props.markers ?? [], (props.rule?.declarations ?? []).map((d) => ({ key: d.prop, loc: d }))),
+)
+const msgs = (prop: string) => byDecl.value[prop]
+const bad = (prop: string) => hasError(byDecl.value[prop])
+const msgId = (prop: string) => `css-msg-${prop}`
 
 // ---- controls -------------------------------------------------------------
 type Choice = { value: string; label: string; title?: string }
@@ -85,95 +101,121 @@ const value = (e: Event) => (e.target as HTMLInputElement).value
 <template>
   <div class="grid">
     <span class="gname">layout</span>
-    <label class="field"><span class="key">display</span>
-      <select class="ctl" :value="get('display') ?? ''" @change="set('display', ($event.target as HTMLSelectElement).value)">
+    <label class="field" :class="{ bad: bad('display') }"><span class="key">display</span>
+      <select
+        class="ctl" :value="get('display') ?? ''" v-bind="aria(msgId('display'), msgs('display'))"
+        @change="set('display', ($event.target as HTMLSelectElement).value)"
+      >
         <option value="">–</option>
         <option v-for="c in CHOICES.display" :key="c.value" :value="c.value">{{ c.label }}</option>
       </select>
+      <Msgs :id="msgId('display')" :markers="msgs('display')" />
     </label>
-    <label class="field"><span class="key">position</span>
-      <select class="ctl" :value="get('position') ?? ''" @change="set('position', ($event.target as HTMLSelectElement).value)">
+    <label class="field" :class="{ bad: bad('position') }"><span class="key">position</span>
+      <select
+        class="ctl" :value="get('position') ?? ''" v-bind="aria(msgId('position'), msgs('position'))"
+        @change="set('position', ($event.target as HTMLSelectElement).value)"
+      >
         <option value="">–</option>
         <option v-for="c in CHOICES.position" :key="c.value" :value="c.value">{{ c.label }}</option>
       </select>
+      <Msgs :id="msgId('position')" :markers="msgs('position')" />
     </label>
-    <div v-for="prop in isFlex ? ['flex-direction', 'justify-content', 'align-items'] : []" :key="prop" class="field span2">
+    <div v-for="prop in isFlex ? ['flex-direction', 'justify-content', 'align-items'] : []" :key="prop" class="field span2" :class="{ bad: bad(prop) }">
       <span class="key">{{ prop.replace('flex-', '').replace('-items', '').replace('-content', '') }}</span>
-      <span class="seg" role="radiogroup">
+      <span class="seg" role="radiogroup" v-bind="aria(msgId(prop), msgs(prop))">
         <button
           v-for="c in CHOICES[prop]" :key="c.value" type="button" role="radio" :title="c.title"
           :aria-checked="get(prop) === c.value" :class="{ on: get(prop) === c.value }"
           @click="set(prop, get(prop) === c.value ? null : c.value)"
         >{{ c.label }}</button>
       </span>
+      <Msgs :id="msgId(prop)" :markers="msgs(prop)" />
     </div>
 
     <span class="gname">box</span>
-    <div v-for="p in [...BOX, ...(positioned ? OFFSETS : [])]" :key="p.prop" class="field" :title="p.prop">
+    <div v-for="p in [...BOX, ...(positioned ? OFFSETS : [])]" :key="p.prop" class="field" :class="{ bad: bad(p.prop) }" :title="p.prop">
       <span class="key">{{ p.label }}</span>
-      <input v-if="rawOf(p)" class="ctl" :value="rawOf(p)" @change="set(p.prop, value($event))">
+      <input v-if="rawOf(p)" class="ctl" :value="rawOf(p)" v-bind="aria(msgId(p.prop), msgs(p.prop))" @change="set(p.prop, value($event))">
       <span v-else class="num">
         <input
           class="ctl" type="number" step="0.5" :value="lengthOf(p)?.n ?? ''" placeholder="–"
-          @change="onLength(p, $event)" @keydown="onStep(p, $event)"
+          v-bind="aria(msgId(p.prop), msgs(p.prop))" @change="onLength(p, $event)" @keydown="onStep(p, $event)"
         >
         <select class="unit" :value="lengthOf(p)?.unit ?? p.unit" @change="onUnit(p, $event)">
           <option v-for="u in UNITS" :key="u" :value="u">{{ u || '·' }}</option>
         </select>
       </span>
+      <Msgs :id="msgId(p.prop)" :markers="msgs(p.prop)" />
     </div>
 
     <span class="gname">type</span>
-    <label class="field span3"><span class="key">font</span>
-      <input class="ctl" :value="get('font-family') ?? ''" placeholder="–" @change="set('font-family', value($event))">
+    <label class="field span3" :class="{ bad: bad('font-family') }"><span class="key">font</span>
+      <input
+        class="ctl" :value="get('font-family') ?? ''" placeholder="–"
+        v-bind="aria(msgId('font-family'), msgs('font-family'))" @change="set('font-family', value($event))"
+      >
+      <Msgs :id="msgId('font-family')" :markers="msgs('font-family')" />
     </label>
-    <div v-for="p in TYPE" :key="p.prop" class="field" :title="p.prop">
+    <div v-for="p in TYPE" :key="p.prop" class="field" :class="{ bad: bad(p.prop) }" :title="p.prop">
       <span class="key">{{ p.label }}</span>
       <span class="num">
         <input
           class="ctl" type="number" :step="p.step ?? 0.5" :value="lengthOf(p)?.n ?? ''" placeholder="–"
-          @change="onLength(p, $event)" @keydown="onStep(p, $event)"
+          v-bind="aria(msgId(p.prop), msgs(p.prop))" @change="onLength(p, $event)" @keydown="onStep(p, $event)"
         >
         <select v-if="p.prop !== 'line-height'" class="unit" :value="lengthOf(p)?.unit ?? p.unit" @change="onUnit(p, $event)">
           <option v-for="u in UNITS" :key="u" :value="u">{{ u || '·' }}</option>
         </select>
       </span>
+      <Msgs :id="msgId(p.prop)" :markers="msgs(p.prop)" />
     </div>
-    <label class="field"><span class="key">weight</span>
-      <select class="ctl" :value="get('font-weight') ?? ''" @change="set('font-weight', ($event.target as HTMLSelectElement).value)">
+    <label class="field" :class="{ bad: bad('font-weight') }"><span class="key">weight</span>
+      <select
+        class="ctl" :value="get('font-weight') ?? ''" v-bind="aria(msgId('font-weight'), msgs('font-weight'))"
+        @change="set('font-weight', ($event.target as HTMLSelectElement).value)"
+      >
         <option value="">–</option>
         <option v-for="c in CHOICES['font-weight']" :key="c.value" :value="c.value">{{ c.label }}</option>
       </select>
+      <Msgs :id="msgId('font-weight')" :markers="msgs('font-weight')" />
     </label>
-    <div class="field span2"><span class="key">align</span>
-      <span class="seg" role="radiogroup">
+    <div class="field span2" :class="{ bad: bad('text-align') }"><span class="key">align</span>
+      <span class="seg" role="radiogroup" v-bind="aria(msgId('text-align'), msgs('text-align'))">
         <button
           v-for="c in CHOICES['text-align']" :key="c.value" type="button" role="radio" :title="c.title"
           :aria-checked="get('text-align') === c.value" :class="{ on: get('text-align') === c.value }"
           @click="set('text-align', get('text-align') === c.value ? null : c.value)"
         >{{ c.label }}</button>
       </span>
+      <Msgs :id="msgId('text-align')" :markers="msgs('text-align')" />
     </div>
 
     <span class="gname">colour</span>
-    <div v-for="prop in ['color', 'background']" :key="prop" class="field" :title="prop">
+    <div v-for="prop in ['color', 'background']" :key="prop" class="field" :class="{ bad: bad(prop) }" :title="prop">
       <span class="key">{{ prop === 'color' ? 'text' : 'bg' }}</span>
       <span class="colour">
         <input class="swatch" type="color" :value="hex(get(prop)) ?? '#000000'" :aria-label="prop" @change="set(prop, value($event))">
-        <input class="ctl" :value="get(prop) ?? ''" placeholder="–" @change="set(prop, value($event))">
+        <input class="ctl" :value="get(prop) ?? ''" placeholder="–" v-bind="aria(msgId(prop), msgs(prop))" @change="set(prop, value($event))">
       </span>
+      <Msgs :id="msgId(prop)" :markers="msgs(prop)" />
     </div>
 
     <!-- Every declaration of the rule as it is written — the escape hatch from the typed grid. -->
     <button type="button" class="more" @click="all = !all">{{ all ? 'fewer properties' : 'all properties…' }}</button>
+    <!-- In the rule but in no declaration — a stray token, a bad selector: nowhere else to put it. -->
+    <Msgs class="span3" :markers="byDecl['']" />
     <template v-if="all">
-      <div v-for="d in rule?.declarations ?? []" :key="d.start" class="field span3 row">
-        <input
-          class="ctl prop" :value="d.prop" spellcheck="false" aria-label="property"
-          @change="emit('rename-prop', d, value($event))"
-        >
-        <input class="ctl" :value="d.value" spellcheck="false" aria-label="value" @change="set(d.prop, value($event))">
-      </div>
+      <template v-for="d in rule?.declarations ?? []" :key="d.start">
+        <div class="field span3 row" :class="{ bad: bad(d.prop) }">
+          <input
+            class="ctl prop" :value="d.prop" spellcheck="false" aria-label="property"
+            @change="emit('rename-prop', d, value($event))"
+          >
+          <input class="ctl" :value="d.value" spellcheck="false" aria-label="value" @change="set(d.prop, value($event))">
+        </div>
+        <Msgs class="span3" :markers="msgs(d.prop)" />
+      </template>
       <p v-if="!rule?.declarations.length" class="none">nothing set yet</p>
     </template>
   </div>
@@ -204,6 +246,9 @@ const value = (e: Event) => (e.target as HTMLInputElement).value
 .num, .colour { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .unit { flex: none; width: 38px; padding: 0 2px; font-size: 8.5px; color: var(--faint-foreground); }
 .swatch { flex: none; width: 25px; padding: 2px; }
+/* A diagnostic on this declaration's own range — same treatment as an attribute field. */
+.field.bad .ctl, .field.bad .unit, .field.bad .swatch, .field.bad .seg { border-color: var(--destructive); }
+.span3 { grid-column: 1 / -1; }
 .row { flex-direction: row; gap: 6px; }
 .row .prop { flex: none; width: 44%; }
 .none { grid-column: 1 / -1; margin: 0; font-size: 11px; color: var(--muted-foreground); }

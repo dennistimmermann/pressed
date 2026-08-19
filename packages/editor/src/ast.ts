@@ -46,6 +46,15 @@ export type ElementInfo = {
   text?: { start: number; end: number; value: string }
 }
 
+/** What kind of place the caret is in — decides `{{ row.x }}` versus `row.x`, and what a `+` can offer. */
+export type CursorContext =
+  | 'text'
+  | 'attr-value-binding'
+  | 'attr-value-static'
+  | 'interpolation'
+  | 'script'
+  | 'other'
+
 // ---------------------------------------------------------------- parsing
 
 /** Tolerant parse: a half-typed template is the normal state of an editor, not an error. */
@@ -187,6 +196,47 @@ function toPropInfo(prop: ElementNode['props'][number], base: number): PropInfo 
   }
 }
 
+// ---------------------------------------------------------------- cursorContext
+
+/** What kind of place the caret is in — decides `{{ row.x }}` versus `row.x`. */
+export function cursorContext(source: string, offset: number): CursorContext {
+  const block = blockAt(source, offset)
+  if (block === 'script') return 'script'
+  if (!block) return 'other'
+  return contextIn(source, block.nodes, offset, block.base) ?? 'text'
+}
+
+function contextIn(
+  source: string,
+  nodes: TemplateChildNode[],
+  offset: number,
+  base: number,
+): CursorContext | null {
+  for (const node of nodes) {
+    if (!contains(node, offset, base)) continue
+    if (node.type === 5) return 'interpolation'
+    if (node.type === 2) return 'text'
+    if (node.type !== 1) continue
+
+    for (const prop of node.props) {
+      const value = toPropInfo(prop, base).valueLoc
+      if (value && offset >= value.start && offset <= value.end)
+        return prop.type === 7 ? 'attr-value-binding' : 'attr-value-static'
+    }
+    // Not in a value: either still in the open tag, or in the element's content.
+    return contextIn(source, node.children, offset, base) ?? (offset < openTagEnd(source, node, base) ? 'other' : 'text')
+  }
+  return null
+}
+
+/** Offset just past the open tag's `>`. Safe to scan for: attribute values are quoted and skipped. */
+function openTagEnd(source: string, node: ElementNode, base: number): number {
+  const last = node.props[node.props.length - 1]
+  const from = last ? base + last.loc.end.offset : base + node.loc.start.offset + 1 + node.tag.length
+  const gt = source.indexOf('>', from)
+  return gt < 0 ? base + node.loc.end.offset : gt + 1
+}
+
 /** Static attribute value locs include the quotes; the editable range does not. */
 function unquote(loc: { start: { offset: number }; end: { offset: number }; source: string }, base: number): Loc {
   const quoted = /^["']/.test(loc.source)
@@ -229,32 +279,28 @@ function escapeAttr(value: string): string {
   return value.replace(/"/g, '&quot;')
 }
 
-// ---------------------------------------------------------------- blocks / boxAt
+/** Plain insert at the caret. */
+export function insertAt(offset: number, text: string): Edit {
+  return { start: offset, end: offset, text }
+}
+
+/** `{{ row.x }}` in text, bare `row.x` where an expression is already being written. */
+export function insertVar(source: string, offset: number, path: string): Edit {
+  const context = cursorContext(source, offset)
+  const bare = context === 'attr-value-binding' || context === 'interpolation'
+  return insertAt(offset, bare ? path : `{{ ${path} }}`)
+}
+
+// ---------------------------------------------------------------- blocks
 
 /**
- * One tree of "blocks" over the whole file, one rule for all of them:
- *   box = the deepest block containing the caret, bold = its text minus its direct children.
+ * One tree of "blocks" over the whole file (the tab model and the rule parser walk it).
  * Blocks are: SFC blocks (`<meta> <snippet> <template> <script> <style>`, nested inside snippets),
  * well-formed template elements, and balanced `{ … }` blocks in script/style/meta text (with
  * their head: `.title {`, `"size": {`, `defineProps<{`). Malformed pieces (unclosed element,
- * unbalanced braces) become `broken` blocks: a caret inside one gets no box at all.
+ * unbalanced braces) become `broken` blocks.
  */
 export type Block = Loc & { kind: 'sfc' | 'element' | 'brace' | 'broken'; children: Block[] }
-export type Box = Loc & { holes: Loc[] }
-
-export function boxAt(source: string, offset: number): Box | null {
-  let node: Block | undefined
-  let list = blockTree(source)
-  for (;;) {
-    const next = list.find((b) => b.start <= offset && offset <= b.end)
-    if (!next) break
-    node = next
-    list = next.children
-  }
-  if (!node || node.kind === 'broken') return null
-  return { start: node.start, end: node.end, holes: node.children.map(({ start, end }) => ({ start, end })) }
-}
-
 /** Top-level SFC blocks with everything nested underneath. Cheap enough to rebuild per caret move. */
 export function blockTree(source: string): Block[] {
   const root = tryParse(source, true)
