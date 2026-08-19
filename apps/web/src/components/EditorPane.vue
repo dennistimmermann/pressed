@@ -13,6 +13,7 @@ import { boxAt } from '@sprint/editor/ast.ts'
 import type { EditorHandle } from '@sprint/editor/editor-handle.ts'
 import type { BlockKind } from '@sprint/editor/tabs.ts'
 import { data } from '@/stores/data'
+import { settings } from '@/stores/settings'
 import { activeBlock, addBlock, badges, editor, filename, formatBlock, handle, offsetOf, switchTab, tabs, visible } from '@/stores/editor'
 
 const kind = computed(() => editor.activeTab.kind)
@@ -32,7 +33,7 @@ const EMPTY: Record<BlockKind, { title: string; body: string }> = {
     body: 'TypeScript that runs once per row before the label renders: compute here what the template should not have to, e.g. `const grams = Math.round(row.remaining_weight)`. It runs in the sandboxed runtime frame, so no timers and no fetching.',
   },
 }
-const emptyText = computed(() => (activeBlock.value?.empty ? EMPTY[kind.value] : null))
+const emptyText = computed(() => (activeBlock.value?.empty && settings.editorView === 'block' ? EMPTY[kind.value] : null))
 
 /** One line per block: what typing does here (SPEC §4.6 / §8). */
 const FOOTER: Record<BlockKind, string> = {
@@ -78,12 +79,19 @@ const editorProps = computed(() => ({
 <template>
   <div class="flex h-full min-h-0 flex-col">
     <!-- The block tabs appear with the code they switch between, never above the panes (SPEC §7). -->
-    <header class="flex h-[40px] flex-none items-center gap-2 border-b border-[var(--section-border)] px-3">
+    <header class="flex h-[46px] flex-none items-center gap-2 border-b border-[var(--section-border)] px-[6px]">
       <BlockTabs
         :model="tabs" :active="editor.activeTab" :scope="editor.activeTab.scope" :badges="badges"
         @select="switchTab" @add="addBlock"
       />
       <span class="flex-1" />
+      <!-- Block: hidden areas show the active block only. File: the whole file, tabs follow the caret. -->
+      <div class="view" role="tablist" aria-label="editor view">
+        <button
+          v-for="v in (['block', 'file'] as const)" :key="v" type="button" role="tab" :aria-selected="settings.editorView === v"
+          class="view-tab" :class="{ on: settings.editorView === v }" @click="settings.editorView = v"
+        >{{ v === 'block' ? 'Split' : 'Full' }}</button>
+      </div>
       <button type="button" class="text-[11px] text-muted-foreground transition-colors hover:text-foreground" @click="formatBlock">Format</button>
       <span class="font-mono text-[10px] text-[var(--meta-foreground)]">⇧⌥F · ⌥1…9 · ⌘⌥[ ]</span>
     </header>
@@ -95,3 +103,33 @@ const editorProps = computed(() => ({
     </footer>
   </div>
 </template>
+
+<style scoped>
+/* The block-tab trough one size down (the mode toggle's proportions), on the pane surface. */
+.view {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-trough);
+  background: var(--field);
+}
+.view-tab {
+  height: 22px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 450;
+  color: var(--muted-foreground);
+  transition: background-color 120ms ease-out, box-shadow 120ms ease-out, color 120ms ease-out;
+}
+.view-tab.on {
+  background: var(--pane);
+  box-shadow: var(--shadow-pill);
+  font-weight: 600;
+  color: var(--foreground);
+}
+</style>

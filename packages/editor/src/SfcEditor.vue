@@ -129,7 +129,7 @@ onMounted(() => {
     tabSize: 2,
     autoIndent: 'full', // Enter / closing tag / `}` re-indent by the language rules above
     // The gutter carries the spacing; nothing between the numbers and the code but this.
-    lineNumbersMinChars: 2,
+    lineNumbersMinChars: 3, // SPEC §4.6: gutter 40–52px; the spare char is the breathing room left of the numbers
     lineDecorationsWidth: 12,
     glyphMargin: false,
     padding: { top: 8, bottom: 8 },
@@ -241,7 +241,8 @@ onMounted(() => {
       boxNode.animate([{ boxShadow: ring(bcss.getPropertyValue('--ring-flash')) }, { boxShadow: ring(bcss.getPropertyValue('--ring-rest')) }], timing)
     },
   )
-  disposables.push(ed.onDidChangeConfiguration(markElement), ed.onDidScrollChange(markElement), ed.onDidLayoutChange(markElement))
+  // Hidden areas move every line below them: Split ⇄ Full must re-seat the box as well.
+  disposables.push(ed.onDidChangeConfiguration(markElement), ed.onDidScrollChange(markElement), ed.onDidLayoutChange(markElement), ed.onDidChangeHiddenAreas(markElement))
 
   disposables.push(
     ed.onDidChangeModelContent(() => {
@@ -459,7 +460,7 @@ defineExpose(handle)
    and shadow, so it is the one thing besides the four chrome shadows that casts one. */
 .sprint-editor .sprint-element-box {
   position: absolute;
-  border-radius: var(--radius-tab);
+  border-radius: var(--radius-control);
   --ring-flash: var(--box-flash);
   --ring-rest: var(--box-ring);
   box-shadow: inset 0 0 0 1px var(--ring-rest), var(--box-shadow);
@@ -478,7 +479,7 @@ defineExpose(handle)
 }
 /* The flash multiplies a light yellow in and fades to white (= no-op under multiply). */
 .sprint-editor .sprint-element-box > .flash {
-  --box-rest: var(--card);
+  --box-rest: var(--pane);
   background: var(--box-rest);
   mix-blend-mode: multiply;
 }

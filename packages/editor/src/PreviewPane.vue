@@ -525,8 +525,8 @@ watch(
   gap: 4px;
   padding: 4px 8px;
   border: 1px solid var(--field-border);
-  border-radius: var(--radius-tab);
-  background: var(--card);
+  border-radius: var(--radius-control);
+  background: var(--pane);
   font-size: 10px;
   font-weight: 450;
   line-height: 1;
@@ -569,7 +569,7 @@ button.chip:hover {
 
 .crumb {
   padding: 5px 9px;
-  border-radius: var(--radius-tab);
+  border-radius: var(--radius-control);
   font-size: 10.5px;
 }
 .crumb.scoped {

@@ -78,14 +78,15 @@ function where(m: Message): string {
 </template>
 
 <style scoped>
-/* The ink foot of the right-hand column (VISUAL-SPEC §2): it lives *inside* the Inspector
-   card, flush to the bottom, and the card's `overflow: hidden` clips it to the 14px corners.
+/* The ink foot of the right-hand column (MIGRATION §3): a flush 30px strip, square, full
+   width of the column, with a 1px --ink-border-2 above it.
    The host adds `.on-ink`, which re-points the text tokens the rules below read. */
 .pane {
   display: flex;
   flex-direction: column;
   max-height: 100%;
   min-height: 0;
+  border-top: 1px solid var(--ink-border-2);
   background: var(--ink);
 }
 .head {

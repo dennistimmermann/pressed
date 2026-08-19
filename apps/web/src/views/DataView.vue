@@ -53,7 +53,7 @@ function onCsv(event: Event) {
       <nav class="flex items-center gap-[3px] rounded-[var(--radius-trough)] border border-input bg-muted p-[3px]" aria-label="Data sources">
         <button
           v-for="source in SOURCES" :key="source.id" type="button"
-          class="flex-1 rounded-[var(--radius-tab)] px-2.5 py-1.5 text-[12px] transition-colors duration-120 ease-out"
+          class="flex-1 rounded-[var(--radius-control)] px-2.5 py-1.5 text-[12px] transition-colors duration-120 ease-out"
           :class="tab === source.id ? 'bg-card font-semibold shadow-[var(--shadow-pill)]' : 'text-muted-foreground hover:text-foreground'"
           @click="tab = source.id"
         >
@@ -65,7 +65,7 @@ function onCsv(event: Event) {
         <label class="text-[12px]" for="csv-file">CSV file — the first row is the field names</label>
         <input
           id="csv-file" type="file" accept=".csv,text/csv"
-          class="text-[12px] file:mr-2 file:h-[30px] file:rounded-[var(--radius-button)] file:border file:border-input file:bg-card file:px-2.5 file:text-[12px]"
+          class="text-[12px] file:mr-2 file:h-[30px] file:rounded-[var(--radius-control)] file:border file:border-input file:bg-card file:px-2.5 file:text-[12px]"
           @change="onCsv"
         >
       </div>
@@ -74,11 +74,11 @@ function onCsv(event: Event) {
         <label class="text-[12px]" for="spoolman-url">Spoolman base URL</label>
         <input
           id="spoolman-url" v-model="settings.spoolmanUrl" type="url" spellcheck="false"
-          class="h-[30px] rounded-[var(--radius-tab)] border border-transparent bg-muted px-2 font-mono text-[11.5px] outline-none focus:border-primary focus:bg-card"
+          class="h-[30px] rounded-[var(--radius-control)] border border-transparent bg-muted px-2 font-mono text-[11.5px] outline-none focus:border-primary focus:bg-card"
         >
         <button
           type="button" :disabled="busy"
-          class="h-8 w-fit rounded-[var(--radius-button)] border border-input px-2.5 text-[12px] hover:bg-muted disabled:opacity-50"
+          class="h-8 w-fit rounded-[var(--radius-control)] border border-input px-2.5 text-[12px] hover:bg-muted disabled:opacity-50"
           @click="run('spoolman', () => spoolmanSource.load(settings.spoolmanUrl))"
         >
           Load spools
@@ -89,10 +89,10 @@ function onCsv(event: Event) {
         <label class="text-[12px]" for="copies">Copies — rows are <span class="font-mono">{{ '{ n }' }}</span></label>
         <input
           id="copies" v-model.number="copies" type="number" min="1" step="1"
-          class="h-[30px] w-[104px] rounded-[var(--radius-tab)] border border-transparent bg-muted px-2 font-mono text-[11.5px] outline-none focus:border-primary focus:bg-card"
+          class="h-[30px] w-[104px] rounded-[var(--radius-control)] border border-transparent bg-muted px-2 font-mono text-[11.5px] outline-none focus:border-primary focus:bg-card"
         >
         <button
-          type="button" class="h-8 w-fit rounded-[var(--radius-button)] border border-input px-2.5 text-[12px] hover:bg-muted"
+          type="button" class="h-8 w-fit rounded-[var(--radius-control)] border border-input px-2.5 text-[12px] hover:bg-muted"
           @click="run('none', () => noneSource.load(copies))"
         >
           Use {{ copies }} copies
@@ -121,7 +121,7 @@ function onCsv(event: Event) {
       <ul v-if="data.rows.length" class="min-h-0 flex-1 overflow-y-auto p-1">
         <li
           v-for="(row, index) in data.rows" :key="index"
-          class="flex items-center gap-2 rounded-[var(--radius-tab)] px-2 py-1 transition-colors duration-120 ease-out"
+          class="flex items-center gap-2 rounded-[var(--radius-control)] px-2 py-1 transition-colors duration-120 ease-out"
           :class="index === data.previewRowIndex ? 'bg-accent text-accent-foreground ring-1 ring-inset ring-primary' : 'hover:bg-[var(--row-hover)]'"
         >
           <input

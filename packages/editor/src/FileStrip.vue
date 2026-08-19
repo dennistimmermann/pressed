@@ -94,7 +94,7 @@ const saveHint = computed(() => (props.dirty ? 'unsaved' : props.savedAt ? 'save
   height: 26px;
   padding: 0 8px;
   border: 1px solid var(--ink-control-border);
-  border-radius: var(--radius-button);
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--muted-foreground);
   font-size: 11px;
@@ -160,7 +160,7 @@ const saveHint = computed(() => (props.dirty ? 'unsaved' : props.savedAt ? 'save
   height: 22px;
   padding: 0 12px;
   border: 0;
-  border-radius: var(--radius-tab);
+  border-radius: var(--radius-control);
   background: transparent;
   font-size: 12px;
   font-weight: 450;
@@ -168,7 +168,7 @@ const saveHint = computed(() => (props.dirty ? 'unsaved' : props.savedAt ? 'save
   transition: background-color 120ms ease-out, box-shadow 120ms ease-out, color 120ms ease-out;
 }
 .mode.on {
-  background: var(--card);
+  background: var(--pane);
   box-shadow: var(--shadow-pill);
   font-weight: 600;
   color: var(--ink);
@@ -178,7 +178,7 @@ const saveHint = computed(() => (props.dirty ? 'unsaved' : props.savedAt ? 'save
   height: 22px;
   width: 26px;
   border: 1px solid var(--ink-control-border);
-  border-radius: var(--radius-button);
+  border-radius: var(--radius-control);
   background: var(--ink-control);
   font-size: 12px;
   color: var(--ink-control-fg);

@@ -1,10 +1,10 @@
 <!--
-  The gutter between two cards *is* the splitter (VISUAL-SPEC §1): 8px of tray, dragged to
-  resize, with a 12px hit area that overlaps the cards by 2px each side. reka-ui's splitter
-  sizes panes in percent,
-  and the design gives the work-area columns in px — so this does the arithmetic itself:
-  it owns nothing but the drag, and the pane it sizes lives in the parent's `settings`.
-  Dragging well past the minimum collapses the pane to 0; dragging back out restores it.
+  The 9px splitter rail between two panes (MIGRATION §3): `--splitter` surface, a 1px
+  `--pane-border` on both long edges, a 28 × 3px `--splitter-grip` pill in the middle.
+  reka-ui's splitter sizes panes in percent and the design gives the work-area columns in px,
+  so this does the arithmetic itself: it owns nothing but the drag, and the pane it sizes lives
+  in the parent's `settings`. Dragging well past the minimum collapses the pane to 0; dragging
+  back out restores it.
 -->
 <script setup lang="ts">
 const props = withDefaults(
@@ -12,13 +12,14 @@ const props = withDefaults(
     /** Current size of the pane this handle sizes, in px. */
     size: number
     min: number
-    max: number
+    /** Upper bound; unbounded when omitted — the flex layout clamps it to what is left. */
+    max?: number
     /** `y` for a horizontal handle between stacked panes. */
     dir?: 'x' | 'y'
     /** True when the pane sits *after* the handle, so dragging back grows it. */
     invert?: boolean
   }>(),
-  { dir: 'x', invert: false },
+  { dir: 'x', invert: false, max: Infinity },
 )
 const emit = defineEmits<{ 'update:size': [px: number] }>()
 
@@ -52,30 +53,55 @@ function onPointerDown(e: PointerEvent) {
 </template>
 
 <style scoped>
-/* No rail, no grabber: the gutter is tray until the pointer is on it. `background-clip`
-   keeps the tint at the 8px the eye sees while the padding widens the target to 12px, and
-   the negative margin gives those 4px back to the layout. */
+/* 9px border-box: 1px --pane-border, 7px --splitter, 1px --pane-border. `::after` is a
+   transparent 13px overlay so the pointer target stays comfortable without widening the rail. */
 .handle {
   position: relative;
   z-index: 1;
   flex: none;
-  background: transparent;
-  background-clip: content-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--splitter);
+  border: 0 solid var(--pane-border);
   transition: background-color 120ms ease-out;
 }
+.handle::before {
+  content: "";
+  display: block;
+  border-radius: 999px;
+  background: var(--splitter-grip);
+}
+.handle::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+/* Widen the hit area along the drag axis only: growing it on the other axis pokes 2px past
+   the viewport at the column's end and gives the whole page scrollbars. */
+.handle.x::after { left: -2px; right: -2px; }
+.handle.y::after { top: -2px; bottom: -2px; }
 .handle:hover {
-  background: var(--gutter-hover);
+  background: var(--splitter-hover);
 }
 .handle.x {
-  width: calc(var(--tray-gutter) + 4px);
-  margin: 0 -2px;
-  padding: 0 2px;
+  width: 9px;
+  border-left-width: 1px;
+  border-right-width: 1px;
   cursor: col-resize;
 }
+.handle.x::before {
+  width: 3px;
+  height: 28px;
+}
 .handle.y {
-  height: calc(var(--tray-gutter) + 4px);
-  margin: -2px 0;
-  padding: 2px 0;
+  height: 9px;
+  border-top-width: 1px;
+  border-bottom-width: 1px;
   cursor: row-resize;
+}
+.handle.y::before {
+  width: 28px;
+  height: 3px;
 }
 </style>

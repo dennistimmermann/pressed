@@ -2,7 +2,7 @@
   Layout only (SPEC §2): two full-width strip rows, then a work area of three columns —
   [ Layers 236 | middle | Inspector 340 + Status ]. The mode owns the middle column and
   nothing else: Blocks → Canvas, Split → Canvas over (or beside) the editor, Code → editor,
-  with the canvas becoming a 240px Preview above the Inspector. Layers, Inspector and Status
+  with the canvas becoming a Preview (240px default, draggable) above the Inspector. Layers, Inspector and Status
   never move, so switching modes cannot reflow them.
 
   E12: at ≤900px the same tree stacks into one scrolling column (middle · Layers · Inspector +
@@ -354,21 +354,22 @@ async function onCreate() {
       @save-as="saveAsName = `${nameOf(editor.templateId)} copy`"
     />
 
-    <!-- The tray (VISUAL-SPEC §1): grey ground, 8px of padding, cards floating on it. It does
-         all the separating, so no pane carries a border. Between two cards the gutter is the
-         splitter; where there is nothing to drag (stacked, Preview over Inspector) it is a gap. -->
+    <!-- The work area (MIGRATION §3): flush white panes, no padding and no gap. What separates
+         two columns is the 9px splitter rail, which carries the 1px --pane-border on both of its
+         long edges; stacked (≤900px) there are no rails, so each pane draws its own hairline. -->
     <div
-      class="flex min-h-0 flex-1 bg-[var(--tray)] p-[var(--tray-gutter)]"
-      :class="stacked ? 'flex-col gap-[var(--tray-gutter)] overflow-y-auto' : ''"
+      class="flex min-h-0 flex-1 bg-[var(--pane)]"
+      :class="stacked ? 'flex-col overflow-y-auto' : ''"
     >
       <!-- Layers: every mode, every block. Nothing to show is an empty state, not a missing pane. -->
       <div
-        class="pane-card min-w-0 flex-none" :class="stacked && 'order-2'"
+        class="min-w-0 flex-none border-b border-[var(--pane-border)]"
+        :class="stacked ? 'order-2' : 'border-b-0'"
         :style="stacked ? undefined : { width: `${settings.layersWidth}px` }"
       >
         <LayersPane v-bind="layersProps" class="h-full" />
       </div>
-      <Splitter v-if="!stacked" v-model:size="settings.layersWidth" :min="180" :max="420" />
+      <Splitter v-if="!stacked" v-model:size="settings.layersWidth" :min="180" />
 
       <!--
         The middle column is the only thing the mode changes. Both panes stay mounted in all
@@ -376,13 +377,13 @@ async function onCreate() {
         edit goes through, and the canvas keeps its zoom — hiding is not unmounting.
       -->
       <div
-        ref="middle" class="flex min-h-0 min-w-0"
+        ref="middle" class="flex min-h-0 min-w-0 border-b border-[var(--pane-border)]"
         :class="[
           settings.splitSideBySide && mode === 'split' ? 'flex-row' : 'flex-col',
-          stacked ? 'order-1 h-[55vh] flex-none' : 'flex-1',
+          stacked ? 'order-1 h-[55vh] flex-none' : 'flex-1 border-b-0',
         ]"
       >
-        <div v-show="mode !== 'code'" class="pane-card min-h-0 min-w-0" :style="canvasStyle">
+        <div v-show="mode !== 'code'" class="min-h-0 min-w-0" :style="canvasStyle">
           <PreviewPane
             v-bind="canvasProps" handles :zoom="settings.zoomCanvas" class="h-full"
             @update:zoom="settings.zoomCanvas = $event"
@@ -392,27 +393,32 @@ async function onCreate() {
           v-if="mode === 'split' && !stacked" v-model:size="settings.splitSize"
           :dir="settings.splitSideBySide ? 'x' : 'y'" :min="160" :max="splitMax"
         />
-        <div v-show="mode !== 'blocks'" class="pane-card min-h-0 min-w-0 flex-1">
+        <div v-show="mode !== 'blocks'" class="min-h-0 min-w-0 flex-1">
           <EditorPane class="h-full" />
         </div>
       </div>
 
-      <Splitter v-if="!stacked" v-model:size="settings.inspectorWidth" :min="300" :max="460" invert />
+      <Splitter v-if="!stacked" v-model:size="settings.inspectorWidth" :min="300" invert />
       <!-- Inspector + Status: identical in every mode, plus the Preview when the canvas has
-           left the middle column (SPEC §2). The Preview is its own card; Status sits *inside*
-           the Inspector card, flush to the bottom, its corners clipped by the card. -->
+           left the middle column (SPEC §2). In Code mode the Preview is the top section of this
+           column, cut off by the splitter rail; Status is a flush 30px strip at its foot. -->
       <div
-        class="flex min-w-0 flex-none flex-col gap-[var(--tray-gutter)]"
+        class="flex min-w-0 flex-none flex-col"
         :class="stacked && 'order-3'"
         :style="stacked ? undefined : { width: `${settings.inspectorWidth}px` }"
       >
-        <div v-if="mode === 'code'" class="pane-card h-[240px] flex-none">
-          <PreviewPane
-            v-bind="canvasProps" :footnote="footnote" :zoom="settings.zoomPreview" class="h-full"
-            @update:zoom="settings.zoomPreview = $event"
-          />
-        </div>
-        <div class="pane-card flex min-h-0 flex-1 flex-col" :class="stacked && 'h-[280px] flex-none'">
+        <template v-if="mode === 'code'">
+          <div class="flex-none" :style="{ height: `${settings.previewHeight}px` }">
+            <PreviewPane
+              v-bind="canvasProps" :footnote="footnote" :zoom="settings.zoomPreview" class="h-full"
+              @update:zoom="settings.zoomPreview = $event"
+            />
+          </div>
+          <!-- Same rail as Split: drag sizes the Preview (240px default, persisted). -->
+          <Splitter v-if="!stacked" v-model:size="settings.previewHeight" :min="160" dir="y" />
+          <div v-else class="h-[9px] flex-none border-y border-[var(--pane-border)] bg-[var(--splitter)]" />
+        </template>
+        <div class="flex min-h-0 flex-1 flex-col" :class="stacked && 'h-[280px] flex-none'">
           <div class="min-h-0 flex-1"><InspectorPane class="h-full" /></div>
           <StatusPane v-bind="statusProps" class="on-ink max-h-[40%] flex-none" />
         </div>
@@ -422,24 +428,24 @@ async function onCreate() {
     <!-- Dirty confirm and save-as: inline, because a question is not an error dialog. -->
     <div
       v-if="pendingId || saveAsName !== null"
-      class="absolute top-[80px] left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-[var(--radius-popover)] border border-input bg-popover px-3 py-2 shadow-[var(--shadow-popover)]"
+      class="absolute top-[80px] left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-[var(--radius-trough)] border border-input bg-popover px-3 py-2 shadow-[var(--shadow-popover)]"
     >
       <template v-if="saveAsName !== null">
         <label class="text-[12px]" for="save-as-name">Save current as</label>
         <input
           id="save-as-name" v-model="saveAsName" autofocus
-          class="h-[28px] w-[180px] rounded-[var(--radius-tab)] border border-transparent bg-muted px-2 text-[12px] outline-none focus:border-primary focus:bg-card"
+          class="h-[28px] w-[180px] rounded-[var(--radius-control)] border border-transparent bg-muted px-2 text-[12px] outline-none focus:border-primary focus:bg-card"
           @keydown.enter="confirmSaveAs"
         >
-        <button type="button" class="h-[28px] rounded-[var(--radius-button)] border border-input px-2 text-[12px] hover:bg-muted" @click="confirmSaveAs">Save</button>
+        <button type="button" class="h-[28px] rounded-[var(--radius-control)] border border-input px-2 text-[12px] hover:bg-muted" @click="confirmSaveAs">Save</button>
         <button type="button" class="text-[12px] text-muted-foreground hover:text-foreground" @click="saveAsName = null">Cancel</button>
       </template>
       <template v-else>
         <span class="text-[12px]">{{ filename }} has unsaved changes.</span>
-        <button type="button" class="h-[28px] rounded-[var(--radius-button)] border border-input px-2 text-[12px] hover:bg-muted" @click="saveAsName = `${nameOf(editor.templateId)} copy`">
+        <button type="button" class="h-[28px] rounded-[var(--radius-control)] border border-input px-2 text-[12px] hover:bg-muted" @click="saveAsName = `${nameOf(editor.templateId)} copy`">
           Save as new template…
         </button>
-        <button type="button" class="h-[28px] rounded-[var(--radius-button)] border border-input px-2 text-[12px] hover:bg-muted" @click="save().then(confirmDiscard)">Save</button>
+        <button type="button" class="h-[28px] rounded-[var(--radius-control)] border border-input px-2 text-[12px] hover:bg-muted" @click="save().then(confirmDiscard)">Save</button>
         <button type="button" class="text-[12px] text-destructive hover:underline" @click="confirmDiscard">Discard</button>
         <button type="button" class="text-[12px] text-muted-foreground hover:text-foreground" @click="pendingId = null">Cancel</button>
       </template>

@@ -23,14 +23,14 @@ function hex(color: string): string {
 const token = (v: string) => hex(getComputedStyle(document.documentElement).getPropertyValue(v).trim())
 
 /**
- * The editor lives in a card, so its ground is `--card` and its code colours are the tokens
+ * The editor lives in a pane, so its ground is `--pane` and its code colours are the tokens
  * VISUAL-SPEC §3 names: keyword `--code-keyword`, string `--code-string`, gutter
  * `--faint-foreground`, current line number `--primary`. The remaining Monarch / Volar
  * voices the spec does not name keep the previous pass's hues, as tokens.
  */
 const palette = {
   light: {
-    background: '--card',
+    background: '--pane',
     tag: '--code-keyword',
     attribute: '--code-keyword',
     string: '--code-string',
@@ -40,7 +40,7 @@ const palette = {
     marker: '--destructive',
   },
   dark: {
-    background: '--card',
+    background: '--pane',
     tag: '--code-keyword',
     attribute: '--code-keyword',
     string: '--code-string',

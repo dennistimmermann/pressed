@@ -37,7 +37,7 @@ const TABS: { id: View; label: string }[] = [
       <!-- Active = a white pill: an ink-on-ink active tab fails contrast (VISUAL-SPEC §2). -->
       <button
         v-for="(tab, i) in TABS" :key="tab.id" type="button"
-        class="flex items-center gap-2 rounded-[var(--radius-tab)] px-2.5 py-1.5 transition-colors duration-120 ease-out"
+        class="flex items-center gap-2 rounded-[var(--radius-control)] px-2.5 py-1.5 transition-colors duration-120 ease-out"
         :class="view === tab.id
           ? 'bg-card shadow-[var(--shadow-pill)] text-[var(--ink)]'
           : 'text-[var(--ink-muted)] hover:text-[var(--ink-foreground)]'"
@@ -58,7 +58,7 @@ const TABS: { id: View; label: string }[] = [
     <!-- Icon button on ink: the `--ink-control` recipe (VISUAL-SPEC §2). -->
     <Button
       variant="ghost" size="icon"
-      class="size-8 rounded-[var(--radius-button)] border border-[var(--ink-control-border)] bg-[var(--ink-control)] text-[var(--ink-control-fg)] hover:text-[var(--ink-foreground)]"
+      class="size-8 rounded-[var(--radius-control)] border border-[var(--ink-control-border)] bg-[var(--ink-control)] text-[var(--ink-control-fg)] hover:text-[var(--ink-foreground)]"
       :aria-label="`Switch to ${settings.theme === 'dark' ? 'light' : 'dark'} theme`" @click="toggleTheme"
     >
       <Sun v-if="settings.theme === 'dark'" class="size-4" />
@@ -66,9 +66,9 @@ const TABS: { id: View; label: string }[] = [
     </Button>
 
     <!-- The only filled button in the app (design invariant 1). -->
-    <Button class="h-8 gap-2 rounded-[var(--radius-button)]" :disabled="printCount === 0" @click="emit('print')">
+    <Button class="h-8 gap-2 rounded-[var(--radius-control)]" :disabled="printCount === 0" @click="emit('print')">
       Print {{ printCount }}
-      <kbd class="rounded-[4px] bg-primary-foreground/20 px-1 py-0.5 font-mono text-[10.5px] leading-none">⌘⏎</kbd>
+      <kbd class="rounded-[var(--radius-badge)] bg-primary-foreground/20 px-1 py-0.5 font-mono text-[10.5px] leading-none">⌘⏎</kbd>
     </Button>
   </header>
 </template>

@@ -565,7 +565,7 @@ function onPick(event: Event) {
 .list:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .row {
   position: relative; display: flex; align-items: center; gap: 7px;
-  height: 27px; padding: 0 9px; border-radius: var(--radius-tab); cursor: pointer;
+  height: 27px; padding: 0 9px; border-radius: var(--radius-control); cursor: pointer;
   font-family: var(--font-mono); font-size: 11.5px; font-weight: 500; color: var(--row-tag);
   transition: background-color 120ms ease-out, color 120ms ease-out;
 }
@@ -582,7 +582,7 @@ function onPick(event: Event) {
 .empty { padding: 6px 9px 28px; text-align: center; font-size: 11px; color: var(--muted-foreground); }
 
 .badge {
-  flex: none; padding: 2.5px 4px; border-radius: 3px;
+  flex: none; padding: 2.5px 4px; border-radius: var(--radius-badge);
   font-family: var(--font-sans); font-size: 8.5px; font-weight: 600; line-height: 1;
 }
 .badge.snip { background: var(--info-bg); color: var(--info); }
@@ -597,39 +597,39 @@ function onPick(event: Event) {
 }
 .row:hover .dots, .row.selected .dots, .dots:focus-visible { opacity: 1; }
 .row.selected .dots { color: inherit; font-weight: 600; }
-.caret:focus-visible, .dots:focus-visible { outline: 2px solid var(--primary); border-radius: 4px; }
+.caret:focus-visible, .dots:focus-visible { outline: 2px solid var(--primary); border-radius: var(--radius-control); }
 
 /* Drop indicator: a 2px accent rule between rows; "inside" is an inset ring on the row. */
-.line { position: absolute; left: 9px; right: 9px; height: 2px; border-radius: 1px; background: var(--primary); pointer-events: none; }
+.line { position: absolute; left: 9px; right: 9px; height: 2px; border-radius: 999px; background: var(--primary); pointer-events: none; }
 
 /* ---- footer actions: the one dashed control per section ---- */
 .dashed {
-  width: 100%; height: 32px; border: 1px dashed var(--dashed); border-radius: var(--radius-dashed); background: transparent;
+  width: 100%; height: 32px; border: 1px dashed var(--dashed); border-radius: var(--radius-control); background: transparent;
   font-size: 11px; font-weight: 500; color: var(--accent-link);
   transition: background-color 120ms ease-out, border-color 120ms ease-out;
 }
 .dashed:hover { border-color: var(--primary); background: var(--accent); }
 .pick {
-  flex: 1; min-width: 0; height: 24px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--radius-tab);
+  flex: 1; min-width: 0; height: 24px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--radius-control);
   background: var(--field); font-family: var(--font-mono); font-size: 11.5px; color: var(--foreground);
 }
 .rule-input, .rename {
-  width: 100%; height: 28px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--radius-tab);
+  width: 100%; height: 28px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--radius-control);
   background: var(--field); font-family: var(--font-mono); font-size: 11.5px; outline: none;
 }
-.rule-input:focus-visible, .rename:focus-visible { border-color: var(--primary); background: var(--card); }
+.rule-input:focus-visible, .rename:focus-visible { border-color: var(--primary); background: var(--pane); }
 .confirm { display: flex; align-items: center; gap: 8px; padding: 6px 2px; font-size: 11px; line-height: 1.35; }
 
 /* ---- popovers (SPEC §4.8) ---- */
 .backdrop { position: fixed; inset: 0; z-index: 19; }
 .menu {
   position: fixed; z-index: 60; padding: 6px;
-  border: 1px solid var(--field-border); border-radius: var(--radius-popover); background: var(--popover);
+  border: 1px solid var(--field-border); border-radius: var(--radius-trough); background: var(--popover);
   box-shadow: var(--shadow-popover);
 }
 .menu hr { margin: 4px 0; border: 0; border-top: 1px solid var(--section-border); }
 .item {
-  display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 9px; border: 0; border-radius: 5px;
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 9px; border: 0; border-radius: var(--radius-control);
   background: transparent; font-size: 12px; color: var(--popover-foreground); text-align: left;
 }
 .item.mono { font-family: var(--font-mono); font-size: 11.5px; }
@@ -638,10 +638,10 @@ function onPick(event: Event) {
 .item.danger { color: var(--destructive); }
 .key { font-family: var(--font-mono); font-size: 10px; color: var(--meta-foreground); }
 
-.menu input { width: 100%; height: 28px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--radius-tab); background: var(--field); font-size: 12px; outline: none; }
-.menu input:focus-visible { border-color: var(--primary); background: var(--card); }
+.menu input { width: 100%; height: 28px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--radius-control); background: var(--field); font-size: 12px; outline: none; }
+.menu input:focus-visible { border-color: var(--primary); background: var(--pane); }
 .menu ul { max-height: 260px; margin: 6px 0 0; padding: 0; overflow: auto; list-style: none; }
-.menu li { display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 6px; border-radius: 5px; cursor: default; }
+.menu li { display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 6px; border-radius: var(--radius-control); cursor: default; }
 .menu li:hover:not(.off) { background: var(--accent); }
 .menu li.off { opacity: 0.45; }
 .menu li.none { color: var(--muted-foreground); font-size: 11px; }

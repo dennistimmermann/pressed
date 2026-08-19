@@ -109,7 +109,7 @@ function pick(kind: 'script' | 'style') {
   height: 26px;
   padding: 6px 11px;
   border: 0;
-  border-radius: var(--radius-tab);
+  border-radius: var(--radius-control);
   background: transparent;
   cursor: pointer;
   transition: background-color 120ms ease-out, box-shadow 120ms ease-out;
@@ -121,7 +121,7 @@ function pick(kind: 'script' | 'style') {
   color: var(--muted-foreground);
 }
 .tab.on {
-  background: var(--card);
+  background: var(--pane);
   box-shadow: var(--shadow-pill);
 }
 .tab.on .label {
@@ -164,7 +164,7 @@ function pick(kind: 'script' | 'style') {
 }
 .tab.plus:hover,
 .tab.plus.open {
-  background: var(--card);
+  background: var(--pane);
   color: var(--foreground);
 }
 .menu {
@@ -175,7 +175,7 @@ function pick(kind: 'script' | 'style') {
   width: 280px;
   padding: 5px;
   border: 1px solid var(--field-border);
-  border-radius: var(--radius-popover);
+  border-radius: var(--radius-trough);
   background: var(--popover);
   box-shadow: var(--shadow-popover);
   white-space: normal;
@@ -187,7 +187,7 @@ function pick(kind: 'script' | 'style') {
   width: 100%;
   padding: 6px 9px;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--radius-control);
   background: transparent;
   text-align: left;
   cursor: pointer;

@@ -70,7 +70,7 @@ watch(() => editor.labelSetupOpen, (open) => {
     <!-- Deleting a block of the user's file asks first — inline, because a question is not a dialog. -->
     <div v-if="pendingDelete === editor.activeTab.scope && pendingDelete" class="flex h-[34px] flex-none items-center gap-2 border-b border-[var(--scope-border)] bg-[var(--scope-well)] px-3 text-[12px]">
       <span>Delete snippet <span class="font-mono">{{ pendingDelete }}</span>? Its uses in the template stay as they are.</span>
-      <button type="button" class="ml-auto h-[26px] rounded-[var(--radius-button)] border border-input px-2 text-[11px] text-destructive hover:bg-card" @click="deleteSnippet(pendingDelete); pendingDelete = null">
+      <button type="button" class="ml-auto h-[26px] rounded-[var(--radius-control)] border border-input px-2 text-[11px] text-destructive hover:bg-card" @click="deleteSnippet(pendingDelete); pendingDelete = null">
         Delete
       </button>
       <button type="button" class="text-[11px] text-muted-foreground hover:text-foreground" @click="pendingDelete = null">Cancel</button>

@@ -218,7 +218,15 @@ export function jumpTo(loc: { file: string; line?: number; col?: number }) {
 export const tabs = computed(() => tabsModel(editor.source))
 export const activeBlock = computed(() => blockOf(tabs.value, editor.activeTab))
 /** The lines the editor shows; everything outside them is hidden, numbering keeps counting. */
-export const visible = computed(() => activeBlock.value?.lines ?? null)
+export const visible = computed(() => (settings.editorView === 'file' ? null : activeBlock.value?.lines ?? null))
+
+// Whole-file view: the tabs are a readout, not a filter — they follow the caret into whichever
+// block (and scope) it sits in. `switchTab` still works the other way round and just moves the caret.
+watch(() => [editor.caret, settings.editorView] as const, ([caret, view]) => {
+  if (view !== 'file') return
+  const tab = tabAt(tabs.value, caret)
+  if (tab && tabKey(tab) !== tabKey(editor.activeTab)) editor.activeTab = tab
+})
 
 /** Strip order across the whole file — the label's blocks, then each snippet's (for `⌘⌥[ ]`). */
 export const allTabs = computed<TabRef[]>(() => [

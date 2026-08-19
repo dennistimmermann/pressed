@@ -82,7 +82,7 @@ const num = (event: Event) => {
   gap: 9px;
   padding: 11px 12px 12px;
   border: 1px solid var(--field-border);
-  border-radius: var(--radius-popover);
+  border-radius: var(--radius-trough);
   background: var(--popover);
   box-shadow: var(--shadow-popover);
 }
@@ -134,7 +134,7 @@ select {
   height: 29px;
   padding: 0 9px;
   border: 1px solid transparent;
-  border-radius: var(--radius-tab);
+  border-radius: var(--radius-control);
   background: var(--field);
   color: var(--foreground);
   /* Measurements are machine text — mono, always (design §1). */
@@ -157,7 +157,7 @@ textarea:focus-visible,
 select:focus-visible {
   outline: none;
   border-color: var(--primary);
-  background: var(--card);
+  background: var(--pane);
 }
 
 .foot {

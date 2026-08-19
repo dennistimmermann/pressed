@@ -286,25 +286,25 @@ watch(
 .key { font-family: var(--font-sans); font-size: 9px; font-weight: 450; color: var(--muted-foreground-2); }
 .bound { color: var(--accent-link); }
 .line { display: flex; align-items: center; gap: 5px; min-width: 0; }
-/* Filled, borderless — focus swaps the border to --primary and the fill to --card (§3). */
+/* Filled, borderless — focus swaps the border to --primary and the fill to --pane (§3). */
 .ctl {
   flex: 1; min-width: 0; height: 26px; padding: 0 8px;
-  border: 1px solid transparent; border-radius: var(--radius-tab); background: var(--field);
+  border: 1px solid transparent; border-radius: var(--radius-control); background: var(--field);
   font-family: var(--font-mono); font-size: 10.5px; font-weight: 450; color: var(--foreground); outline: none;
   transition: background-color 120ms ease-out, border-color 120ms ease-out;
 }
 .ctl::placeholder { color: var(--faint-foreground); }
-.ctl:focus-visible { border-color: var(--primary); background: var(--card); }
+.ctl:focus-visible { border-color: var(--primary); background: var(--pane); }
 .ctl.tall { height: auto; padding: 4px 8px; line-height: 1.5; }
 /* Prose is prose (CLAUDE.md); text with `{{ }}` in it is code and stays mono. */
 .ctl.prose { font-family: var(--font-sans); font-size: 11px; }
 .ctl.expr { color: var(--accent-link); }
-.swatch { flex: none; width: 26px; height: 26px; padding: 2px; border: 1px solid var(--field-border); border-radius: var(--radius-tab); background: var(--card); }
-.check { width: 30px; height: 18px; appearance: none; border: 1px solid var(--field-border); border-radius: 9px; background: var(--field); transition: background-color 120ms ease-out; }
+.swatch { flex: none; width: 26px; height: 26px; padding: 2px; border: 1px solid var(--field-border); border-radius: var(--radius-control); background: var(--pane); }
+.check { width: 30px; height: 18px; appearance: none; border: 1px solid var(--field-border); border-radius: 999px; background: var(--field); transition: background-color 120ms ease-out; }
 .check:checked { background: var(--primary); }
 .pick {
   flex: none; width: 26px; height: 26px; display: grid; place-items: center;
-  border: 1px solid var(--field-border); border-radius: var(--radius-tab); background: var(--card);
+  border: 1px solid var(--field-border); border-radius: var(--radius-control); background: var(--pane);
   font-family: var(--font-mono); font-size: 10px; font-weight: 600; color: var(--accent-link);
   transition: background-color 120ms ease-out, border-color 120ms ease-out;
 }
@@ -317,16 +317,16 @@ watch(
 .backdrop { position: fixed; inset: 0; z-index: 19; }
 .menu {
   position: fixed; z-index: 60; width: 260px; padding: 6px;
-  border: 1px solid var(--field-border); border-radius: var(--radius-popover); background: var(--popover);
+  border: 1px solid var(--field-border); border-radius: var(--radius-trough); background: var(--popover);
   box-shadow: var(--shadow-popover);
 }
 .menu.at-add { position: absolute; left: 0; bottom: 22px; }
-.menu input { width: 100%; height: 26px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--radius-tab); background: var(--field); font-family: var(--font-mono); font-size: 11px; outline: none; }
-.menu input:focus-visible { border-color: var(--primary); background: var(--card); }
+.menu input { width: 100%; height: 26px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--radius-control); background: var(--field); font-family: var(--font-mono); font-size: 11px; outline: none; }
+.menu input:focus-visible { border-color: var(--primary); background: var(--pane); }
 .menu ul { max-height: 260px; margin: 4px 0 0; padding: 0; overflow: auto; list-style: none; }
 .menu li, .menu .item {
   display: flex; align-items: center; gap: 8px; width: 100%; height: 26px; padding: 0 9px;
-  border: 0; border-radius: 5px; background: transparent; cursor: default;
+  border: 0; border-radius: var(--radius-control); background: transparent; cursor: default;
   font-family: var(--font-mono); font-size: 11px; color: var(--popover-foreground); text-align: left;
 }
 .menu li:hover, .menu .item:hover { background: var(--accent); }

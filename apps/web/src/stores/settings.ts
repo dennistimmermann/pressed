@@ -27,6 +27,10 @@ export type Settings = {
   inspectorCollapsed: Record<'props' | 'attributes' | 'style', boolean>
   /** Canvas size inside Split mode (height, or width when side by side) and the flip. */
   splitSize: number
+  /** Code mode: height of the Preview above the Inspector, px (SPEC §2 default 240). */
+  previewHeight: number
+  /** Editor shows the active block only, or the whole file with the tabs following the caret. */
+  editorView: 'block' | 'file'
   splitSideBySide: boolean
   previewMode: 'rendered' | 'raster'
   /** Canvas zoom (SPEC §6): Blocks and Split share one, the Code Preview keeps its own. */
@@ -46,7 +50,9 @@ export const settings = persisted<Settings>('sprint.settings', {
   inspectorWidth: 340,
   layersCollapsed: { layers: false, rules: true, script: true },
   inspectorCollapsed: { props: false, attributes: false, style: false },
-  splitSize: 318,
+  splitSize: 326,
+  previewHeight: 240,
+  editorView: 'block',
   splitSideBySide: false,
   previewMode: 'rendered',
   zoomCanvas: 'fit',

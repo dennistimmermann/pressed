@@ -322,7 +322,7 @@ const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent &
   border-bottom: 1px solid var(--section-border);
 }
 .chip {
-  flex: none; padding: 3px 5px; border-radius: 4px; background: var(--field);
+  flex: none; padding: 3px 5px; border-radius: var(--radius-badge); background: var(--field);
   font-family: var(--font-sans); font-size: 8.5px; font-weight: 600; line-height: 1; color: var(--muted-foreground);
 }
 .name { font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
@@ -348,7 +348,7 @@ const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent &
 /* ---- props ---- */
 .prop-row {
   display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 8px;
-  border: 1px solid transparent; border-radius: var(--radius-tab); background: var(--field);
+  border: 1px solid transparent; border-radius: var(--radius-control); background: var(--field);
   font-family: var(--font-mono); font-size: 11px; font-weight: 500;
 }
 .prop-row .type { font-weight: 450; font-size: 10px; color: var(--info); }
@@ -361,8 +361,8 @@ const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent &
 
 /* ---- pills (SPEC §4.3: radius 5, active = accent + 600) ---- */
 .pill {
-  display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: var(--radius-tab);
-  border: 1px solid var(--field-border); background: var(--card);
+  display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: var(--radius-control);
+  border: 1px solid var(--field-border); background: var(--pane);
   font-family: var(--font-mono); font-size: 10.5px; font-weight: 500; color: var(--muted-foreground);
   transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
 }
@@ -375,10 +375,10 @@ const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent &
 .pill .cls { font-size: 10.5px; color: var(--muted-foreground); }
 
 .sel {
-  width: 150px; height: 26px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--radius-tab);
+  width: 150px; height: 26px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--radius-control);
   background: var(--field); font-family: var(--font-mono); font-size: 11px; font-weight: 500; outline: none;
 }
-.sel:focus-visible { border-color: var(--primary); background: var(--card); }
+.sel:focus-visible { border-color: var(--primary); background: var(--pane); }
 .more { align-self: flex-start; border: 0; background: transparent; padding: 0; font-family: var(--font-sans); font-size: 10.5px; font-weight: 500; color: var(--accent-link); }
 .more:hover { text-decoration: underline; }
 
@@ -387,21 +387,21 @@ const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent &
 .backdrop { position: fixed; inset: 0; z-index: 19; }
 .menu {
   position: fixed; z-index: 60; width: 240px; padding: 6px;
-  border: 1px solid var(--field-border); border-radius: var(--radius-popover); background: var(--popover);
+  border: 1px solid var(--field-border); border-radius: var(--radius-trough); background: var(--popover);
   box-shadow: var(--shadow-popover);
 }
 .menu .item {
   display: flex; align-items: center; gap: 8px; width: 100%; height: 26px; padding: 0 9px;
-  border: 0; border-radius: 5px; background: transparent;
+  border: 0; border-radius: var(--radius-control); background: transparent;
   font-family: var(--font-mono); font-size: 11px; color: var(--popover-foreground);
 }
 .menu .item:hover { background: var(--accent); }
 .menu .hint { font-size: 10px; color: var(--meta-foreground); }
 .menu input {
   width: 100%; height: 26px; margin-top: 4px; padding: 0 9px; border: 1px solid transparent;
-  border-radius: var(--radius-tab); background: var(--field); font-family: var(--font-mono); font-size: 11px; outline: none;
+  border-radius: var(--radius-control); background: var(--field); font-family: var(--font-mono); font-size: 11px; outline: none;
 }
-.menu input:focus-visible { border-color: var(--primary); background: var(--card); }
+.menu input:focus-visible { border-color: var(--primary); background: var(--pane); }
 
 /* ---- footer: destructive text + inline confirm, never a modal ---- */
 .foot {

@@ -124,13 +124,20 @@ function commitRename() {
   display: flex;
   align-items: center;
   gap: 9px;
-  height: 42px;
-  padding: 0 12px;
+  height: 46px;
+  padding: 0 6px; /* 6px all around the trough (46 − 34 = 2 × 6) */
   border-bottom: 1px solid var(--scope-border);
-  /* Level 1 (VISUAL-SPEC §2): lighter than the ink rows above, darker than the cards below —
+  /* Level 1 (MIGRATION §3): lighter than the ink rows above, darker than the panes below —
      the only row where the surface rises as you go down. Do not darken it. */
   background: var(--scope);
   white-space: nowrap;
+  /* With the tray gone the row no longer inherits a usable foreground, so it re-points the
+     text scale the rules below read to the explicit --scope-* one (MIGRATION §3 row 9). */
+  --foreground: var(--scope-foreground);
+  --muted-foreground: var(--scope-muted);
+  --muted-foreground-2: var(--scope-faint);
+  --meta-foreground: var(--scope-faint);
+  --destructive: var(--scope-destructive);
 }
 .row > * {
   flex: none;
@@ -159,7 +166,7 @@ function commitRename() {
   height: 26px;
   padding: 6px 11px;
   border: 0;
-  border-radius: var(--radius-tab);
+  border-radius: var(--radius-control);
   background: transparent;
   cursor: pointer;
   transition: background-color 120ms ease-out, box-shadow 120ms ease-out, color 120ms ease-out;
@@ -172,7 +179,7 @@ function commitRename() {
   color: var(--muted-foreground);
 }
 .tab.on {
-  background: var(--card);
+  background: var(--pane);
   box-shadow: var(--shadow-pill);
 }
 .tab.on .label {
@@ -189,10 +196,10 @@ function commitRename() {
   justify-content: center;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 12px;
-  color: var(--muted-foreground);
+  color: var(--scope-muted-2);
 }
 .tab.plus:hover {
-  background: var(--card);
+  background: var(--pane);
   color: var(--foreground);
 }
 .dot {
@@ -235,8 +242,8 @@ function commitRename() {
   width: 12ch;
   padding: 0 9px;
   border: 1px solid var(--primary);
-  border-radius: var(--radius-tab);
-  background: var(--card);
+  border-radius: var(--radius-control);
+  background: var(--pane);
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 12px;
   outline: none;
@@ -251,7 +258,7 @@ function commitRename() {
   padding: 0;
   font-family: var(--font-sans, system-ui, sans-serif);
   font-size: 11px;
-  color: var(--muted-foreground);
+  color: var(--scope-muted-2);
   cursor: pointer;
   transition: color 120ms ease-out;
 }
