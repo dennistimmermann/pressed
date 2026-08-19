@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { attributeEdit, cursorContext, elementAt, insertVar } from './ast'
+import { attributeEdit, cursorContext, elementAt, insertVar, loopClause, type Edit } from './ast'
 
 const SOURCE = `<meta>
 { "name": "T", "size": { "width": 60, "height": 40 } }
@@ -425,5 +425,42 @@ describe('countMatching', () => {
     expect(countMatching(tree, '.a, .b')).toBe(2)
     expect(countMatching(tree, '.gone')).toBe(0)
     expect(countMatching(tree, 'div span')).toBe(0) // ponytail: descendants are not supported
+  })
+})
+
+describe('directive edits', () => {
+  /** What Monaco does with one `executeEdits` batch: apply back to front. */
+  const apply = (source: string, edits: Edit[]) =>
+    [...edits].sort((a, b) => b.start - a.start).reduce((s, e) => s.slice(0, e.start) + e.text + s.slice(e.end), source)
+  const line = (source: string, needle: string) => source.split('\n').find((l) => l.includes(needle))
+
+  it('writes and fills a directive verbatim, never as a binding', () => {
+    const one = apply(SOURCE, [attributeEdit(elementAt(SOURCE, at('<QrCode', 3))!, 'v-if', 'set-static', '')])
+    expect(line(one, '<QrCode')).toContain('v-if=""')
+    const two = apply(one, [attributeEdit(elementAt(one, one.indexOf('<QrCode') + 3)!, 'v-if', 'set-static', 'row.id')])
+    expect(line(two, '<QrCode')).toContain('v-if="row.id"')
+  })
+
+  it('renames the condition in one batch — the old directive out, the new one in', () => {
+    const one = apply(SOURCE, [attributeEdit(elementAt(SOURCE, at('<QrCode', 3))!, 'v-if', 'set-static', 'row.id')])
+    const el = elementAt(one, one.indexOf('<QrCode') + 3)!
+    const two = apply(one, [attributeEdit(el, 'v-if', 'remove'), attributeEdit(el, 'v-else', 'set-static', true)])
+    expect(line(two, '<QrCode')).toBe('  <QrCode :value="`spool:${row.id}`" size="16mm" v-else />')
+  })
+
+  it('writes a loop clause and its bound :key', () => {
+    const one = apply(SOURCE, [attributeEdit(elementAt(SOURCE, at('class="temps"'))!, 'v-for', 'set-static', 'tag in row.tags')])
+    const two = apply(one, [attributeEdit(elementAt(one, one.indexOf('class="temps"'))!, 'key', 'set-binding', 'tag')])
+    expect(line(two, 'class="temps"')).toContain('v-for="tag in row.tags" :key="tag"')
+  })
+})
+
+describe('loopClause', () => {
+  it('splits alias from list, and names every alias it declares', () => {
+    expect(loopClause('tag in row.tags')).toEqual({ alias: 'tag', aliases: ['tag'], list: 'row.tags' })
+    expect(loopClause('(item, i) of list.filter(x => x)')).toEqual({
+      alias: 'item, i', aliases: ['item', 'i'], list: 'list.filter(x => x)',
+    })
+    expect(loopClause('')).toEqual({ alias: '', aliases: [], list: '' })
   })
 })

@@ -4,7 +4,7 @@ import { labelDocument } from '@sprint/core/template/label.ts'
 import { RenderSuperseded } from '@sprint/editor/runtime-client.ts'
 import {
   attributeEdit, changeTag, countMatching, deleteElement, duplicateElement, elementAt, elementTree,
-  indentElement, matchingElements, moveElement, outdentElement, reparentElement, setText,
+  indentElement, loopClause, matchingElements, moveElement, outdentElement, parentOf, reparentElement, setText,
   unwrapElement, wrapElement, insertElementText,
 } from '@sprint/editor/ast.ts'
 import { blockOf, insertBlock, tabAt, tabKey, tabsModel, type TabBlock } from '@sprint/editor/tabs.ts'
@@ -818,11 +818,28 @@ function propLocs(scope: string): Record<string, { start: number; end: number }>
   return out
 }
 
+/**
+ * The `v-for` aliases in scope at the caret — the element's own first, then its ancestors'.
+ * `(item, i) in list` declares both names; they are the only variables that exist nowhere in
+ * the row type, so without this the `{ }` picker cannot offer what the loop just introduced.
+ */
+const loopAliases = computed<{ path: string; hint: string }[]>(() => {
+  const source = editor.source
+  const out: { path: string; hint: string }[] = []
+  let el = element.value
+  while (el) {
+    for (const name of loopClause(el.props.find((p) => p.name === 'v-for')?.value ?? '').aliases)
+      if (!out.some((v) => v.path === name)) out.push({ path: name, hint: 'v-for' })
+    el = parentOf(source, el)
+  }
+  return out
+})
+
 /** What the Inspector's `{ }` picker offers: flat `row.*` leaves, or — in a scope — its props. */
 export const variables = computed<{ path: string; hint: string }[]>(() => {
   if (editor.activeTab.scope !== null)
-    return (scopeProps.value ?? []).map((p) => ({ path: p.name, hint: p.type }))
-  const out: { path: string; hint: string }[] = []
+    return [...loopAliases.value, ...(scopeProps.value ?? []).map((p) => ({ path: p.name, hint: p.type }))]
+  const out: { path: string; hint: string }[] = [...loopAliases.value]
   const walk = (nodes: VarNode[]) => {
     for (const n of nodes) if (n.kind === 'leaf') out.push({ path: n.path, hint: n.value }); else walk(n.children)
   }

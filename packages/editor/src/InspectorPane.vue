@@ -16,6 +16,7 @@ import PropertyEditor from './PropertyEditor.vue'
 import StylePane from './StylePane.vue'
 import { aria, hasError, level } from './inspector/markers'
 import { setDeclaration, type Declaration, type Rule, type StyleTarget } from './css'
+import { DIRECTIVE_FIELDS } from './ast'
 import type { ElementInfo, LayerNode, Loc } from './ast'
 import type { EditorHandle, Marker } from './editor-handle'
 import type { ComponentSchema } from './types'
@@ -218,7 +219,10 @@ function addProp() {
 /** PROPS: what Volar says about each `defineProps` member, under the row that declares it. */
 const propMarkers = computed(() => (props.scopeProps ?? []).flatMap((p) => p.markers ?? []))
 
-const attrCount = computed(() => props.element?.props.filter((p) => !p.isEvent && !p.name.startsWith('v-')).length ?? 0)
+/** What ATTRIBUTES actually shows: plain attributes plus the directives that get a row. */
+const attrCount = computed(
+  () => props.element?.props.filter((p) => !p.isEvent && (!p.name.startsWith('v-') || DIRECTIVE_FIELDS.includes(p.name))).length ?? 0,
+)
 
 /** The section header says something is wrong in there even while the section is collapsed. */
 const markerLevel = computed(() =>

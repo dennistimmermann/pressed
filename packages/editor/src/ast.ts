@@ -462,7 +462,20 @@ export type LayerNode = {
   children: LayerNode[]
 }
 
-const HINTED = new Set(['if', 'else-if', 'else', 'for'])
+/** The directives the Inspector gives a field to — and, minus the `v-`, what Layers hints. */
+export const DIRECTIVE_FIELDS = ['v-if', 'v-else-if', 'v-else', 'v-for', 'v-html']
+const HINTED = new Set(DIRECTIVE_FIELDS.map((d) => d.slice(2)))
+
+/**
+ * A `v-for` clause split into its two halves: `alias` as written (`item`, `(item, i)`) for the
+ * field that edits it, `aliases` as the names it declares for the `{ }` picker, `list` the
+ * expression iterated. An unparsable clause yields empty strings — the row then reads as unset.
+ */
+export function loopClause(clause: string): { alias: string; aliases: string[]; list: string } {
+  const m = /^\(?([^)]*?)\)?\s+(?:in|of)\s+([\s\S]*)$/.exec(clause)
+  const alias = m?.[1] ?? ''
+  return { alias, aliases: alias.split(',').map((s) => s.trim()).filter(Boolean), list: m?.[2] ?? '' }
+}
 
 /**
  * The element tree of one template block. `blockLoc` is the block's own range (main template
