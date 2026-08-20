@@ -15,5 +15,5 @@ export { csvSource, parseCsv, csvRowType } from './sources/csv'
 export { spoolmanSource, SPOOL_ROW_TYPE } from './sources/spoolman'
 export { noneSource } from './sources/none'
 
-export { LIBRARY_NAMES, libraryComponents, librarySources } from './library/index'
+export { LIBRARY_NAMES, librarySources } from './library/index'
 export { code128bBars, code128bValues } from './library/code128'

@@ -25,3 +25,10 @@ dist-ssr
 
 # build output
 apps/*/dist
+
+# renderer experiment artifacts
+spikes/*/target/
+spikes/*/node_modules/
+spikes/*/output/
+spikes/*/pkg/
+*.node

@@ -1,7 +1,7 @@
 import { computed, nextTick, reactive, ref, shallowRef, toRaw, watch } from 'vue'
 import { parseMeta } from '@sprint/core/template/meta.ts'
 import { labelDocument } from '@sprint/core/template/label.ts'
-import { RenderSuperseded } from '@sprint/editor/runtime-client.ts'
+import { debounce, RenderSuperseded } from '@sprint/editor/runtime-client.ts'
 import {
   attributeEdit, countMatching, deleteElement, duplicateElement, elementAt, elementTree,
   indentElement, loopClause, matchingElements, moveElement, outdentElement, parentOf, reparentElement, setText,
@@ -124,16 +124,10 @@ export async function saveAs(name: string) {
 
 // ---------------------------------------------------------------- render
 
-let timer: ReturnType<typeof setTimeout> | undefined
-
 /** Design §4: 150ms debounce from keystroke to compile+render in the runtime frame. */
-export function scheduleRender() {
-  clearTimeout(timer)
-  timer = setTimeout(render, 150)
-}
+export const scheduleRender = debounce(render, 150)
 
 export async function render() {
-  clearTimeout(timer)
   const source = editor.source
   try {
     // No rows yet → render with `row = {}` so field paths stay visible (design §3.7).
@@ -146,7 +140,11 @@ export async function render() {
     })
     editor.messages = result.errors
     editor.components = result.components
-    if (result.html[0] != null) editor.label = { html: result.html[0], css: result.css }
+    // Last *good* render: a fatal message returns an empty html[0], which `!= null` let
+    // through — the preview blanked instead of keeping the previous label (found during the
+    // renderer experiments; engine-independent).
+    const fatal = result.errors.some((e) => e.kind !== 'purity')
+    if (!fatal && result.html[0] != null) editor.label = { html: result.html[0], css: result.css }
   } catch (e) {
     if (e instanceof RenderSuperseded) return // a newer render is already on its way
     editor.messages = [{ kind: 'render', message: e instanceof Error ? e.message : String(e), file: 'main' }]

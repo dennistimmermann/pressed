@@ -9,7 +9,7 @@
   Status) — classes change, nothing unmounts, so Monaco survives crossing the breakpoint.
 -->
 <script setup lang="ts">
-import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
+import { computed, nextTick, ref, toRaw, useTemplateRef, watch } from 'vue'
 import { useElementSize, useEventListener, useMediaQuery } from '@vueuse/core'
 import { parseMeta } from '@sprint/core/template/meta.ts'
 import { LayersPane, ManageTemplates, PreviewPane, StatusPane } from '@sprint/editor'
@@ -282,7 +282,9 @@ watch([() => editor.manageOpen, all], async ([open]) => {
   for (const t of all.value) {
     if (thumbnails.value[t.id]) continue
     try {
-      const result = await runtime().render({ source: t.source, assets: t.assets, rows: [] })
+      // toRaw: a Vue proxy cannot be structured-cloned across postMessage — the throw landed
+      // in the catch below and user-saved templates silently never got a thumbnail.
+      const result = await runtime().render({ source: t.source, assets: toRaw(t.assets), rows: [] })
       if (result.html[0] != null)
         thumbnails.value[t.id] = labelDocument({ html: result.html[0], css: result.css }, result.meta.size)
     } catch { /* a template that will not compile simply has no thumbnail */ }

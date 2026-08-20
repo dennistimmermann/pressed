@@ -1,5 +1,16 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "oxc", "vue"],
-  "ignorePatterns": ["dist", "docs", "apps/web/src/components/ui", "apps/web/src/templates"]
+  "plugins": [
+    "typescript",
+    "oxc",
+    "vue"
+  ],
+  "ignorePatterns": [
+    "dist",
+    "docs",
+    "apps/web/src/components/ui",
+    "apps/web/src/templates",
+    "spikes",
+    "packages/renderer"
+  ]
 }

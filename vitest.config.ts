@@ -1,17 +1,12 @@
-import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
-import vue from '@vitejs/plugin-vue'
 
-// One vitest run for the whole monorepo. Node environment: core is DOM-free by contract.
-// plugin-vue + the `sprint` alias are here so the library's .vue files can be imported
-// directly — the same two lines apps/web's vite config needs.
+// One vitest run for the whole monorepo. Node environment: core is DOM-free by contract, and
+// `library/index.ts` reads its .vue files off disk rather than through Vite here — which is
+// why no plugin-vue and no `sprint` alias are needed to run the real compiler in a test.
 export default defineConfig({
-  plugins: [vue()],
-  resolve: {
-    alias: { sprint: fileURLToPath(new URL('./packages/core/src/template/sprint-module.ts', import.meta.url)) },
-  },
   test: {
     environment: 'node',
+    // `packages/renderer` has no `src/**` in TypeScript — its src is the Rust crate.
     include: ['packages/*/src/**/*.test.ts', 'apps/*/src/**/*.test.ts'],
   },
 })
