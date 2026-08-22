@@ -1,22 +1,22 @@
 import { computed, nextTick, reactive, ref, shallowRef, toRaw, watch } from 'vue'
 import { parseMeta } from '@sprint/core/template/meta.ts'
 import { labelDocument } from '@sprint/core/template/label.ts'
-import { debounce, RenderSuperseded } from '@sprint/editor/runtime-client.ts'
+import { debounce, RenderSuperseded } from '@/editor/runtime-client.ts'
 import {
   attributeEdit, countMatching, deleteElement, duplicateElement, elementAt, elementTree,
   indentElement, loopClause, matchingElements, moveElement, outdentElement, parentOf, reparentElement, setText,
   unwrapElement, wrapElement, insertElementText,
-} from '@sprint/editor/ast.ts'
-import { blockOf, insertBlock, tabAt, tabKey, tabsModel, type TabBlock } from '@sprint/editor/tabs.ts'
-import { findRule, ruleAt, rulesIn, setDeclaration, type Rule, type StyleTarget } from '@sprint/editor/css.ts'
-import { buildTree, type VarNode } from '@sprint/editor/inspector/row-tree.ts'
-import type { BlockKind, TabRef } from '@sprint/editor/tabs.ts'
-import type { Edit, ElementInfo, LayerNode, Loc, StructureEdit } from '@sprint/editor/ast.ts'
-import type { EditorHandle } from '@sprint/editor/editor-handle.ts'
-import { LIBRARY_NAMES } from '@sprint/core'
+} from '@/editor/ast.ts'
+import { blockOf, insertBlock, tabAt, tabKey, tabsModel, type TabBlock } from '@/editor/tabs.ts'
+import { findRule, ruleAt, rulesIn, setDeclaration, type Rule, type StyleTarget } from '@/editor/css.ts'
+import { buildTree, type VarNode } from '@/editor/inspector/row-tree.ts'
+import type { BlockKind, TabRef } from '@/editor/tabs.ts'
+import type { Edit, ElementInfo, LayerNode, Loc, StructureEdit } from '@/editor/ast.ts'
+import type { EditorHandle } from '@/editor/editor-handle.ts'
+import { getPath, isWarning, LIBRARY_NAMES, rowPathsUsed } from '@sprint/core'
 import type { Assets, ComponentSchema, Message, Meta, RenderedLabel } from '@sprint/core'
-import { runtime } from '../runtime-client'
-import { data, previewRow } from './data'
+import { runtime } from '@/render/runtime-client'
+import { data, mappedPreviewRow, mappedRowType } from './data'
 import { settings } from './settings'
 import {
   bundled, download, findTemplate, isBundled, newTemplate, refreshTemplates, saveTemplate,
@@ -26,7 +26,7 @@ import {
 /**
  * The editor's live state. It lives in a store, not in EditorView, for two reasons: the
  * unsaved buffer must survive switching to the Data view and back, and the top bar's
- * `60 × 40 · gap 2` badge reads the *buffer's* `<meta>`, not the saved record's.
+ * `60 × 40 · margin 2` badge reads the *buffer's* `<meta>`, not the saved record's.
  */
 export const editor = reactive({
   templateId: null as string | null,
@@ -65,15 +65,30 @@ export const filename = computed(() => `${meta.value.name}.vue`)
 
 /** The standalone label document the preview shows — the same one that goes to print. */
 export const previewDocument = computed(() =>
-  editor.label ? labelDocument(editor.label, meta.value.size) : null,
+  editor.label ? labelDocument(editor.label, meta.value.size, false, meta.value.margin ?? 0) : null,
 )
 
-export const errorCount = computed(() => editor.messages.filter((m) => m.kind !== 'purity').length)
-export const warningCount = computed(() => editor.messages.filter((m) => m.kind === 'purity').length)
+export const errorCount = computed(() => editor.messages.filter((m) => !isWarning(m)).length)
+export const warningCount = computed(() => editor.messages.filter(isWarning).length)
 
 /** SPEC §3 E10 · E11: what the canvas is showing. Which rows are *selected* is print's business. */
 export const previewState = computed<'ok' | 'error' | 'no-data'>(() =>
   errorCount.value ? 'error' : !data.rows.length ? 'no-data' : 'ok',
+)
+
+/** Every `row.…` the template reads — the Data view's checklist of what a source must supply. */
+export const neededPaths = computed(() => rowPathsUsed(editor.source))
+
+/**
+ * Per needed path: `true` the mapped row has a value there, `false` nothing does, `null` there
+ * is no data to judge by yet. Reading the *mapped* row means an identity match and an explicit
+ * mapping are the same answer — a source whose names already fit needs no mapping at all.
+ */
+export const mappedState = computed<Record<string, boolean | null>>(() =>
+  Object.fromEntries(neededPaths.value.map((path) => [
+    path,
+    data.rows.length ? getPath(mappedPreviewRow.value, path.slice('row.'.length)) !== undefined : null,
+  ])),
 )
 
 // ---------------------------------------------------------------- templates
@@ -127,31 +142,36 @@ export async function saveAs(name: string) {
 /** Design §4: 150ms debounce from keystroke to compile+render in the runtime frame. */
 export const scheduleRender = debounce(render, 150)
 
+let renderToken = 0
+
 export async function render() {
   const source = editor.source
+  // Requests run concurrently on the shared frame now; only the newest may write the store.
+  const mine = ++renderToken
   try {
     // No rows yet → render with `row = {}` so field paths stay visible (design §3.7).
     // `toRaw`: postMessage structured-clones its payload, and a Vue proxy cannot be cloned.
     const result = await runtime().render({
       source,
       assets: toRaw(editor.assets),
-      rows: data.rows.length ? [toRaw(previewRow.value)] : [],
+      rows: data.rows.length ? [toRaw(mappedPreviewRow.value)] : [],
       inspector: true,
     })
+    if (mine !== renderToken) return // an older render finishing late must not clobber a newer one
     editor.messages = result.errors
     editor.components = result.components
     // Last *good* render: a fatal message returns an empty html[0], which `!= null` let
     // through — the preview blanked instead of keeping the previous label (found during the
     // renderer experiments; engine-independent).
-    const fatal = result.errors.some((e) => e.kind !== 'purity')
+    const fatal = result.errors.some((e) => !isWarning(e))
     if (!fatal && result.html[0] != null) editor.label = { html: result.html[0], css: result.css }
   } catch (e) {
-    if (e instanceof RenderSuperseded) return // a newer render is already on its way
+    if (mine !== renderToken || e instanceof RenderSuperseded) return
     editor.messages = [{ kind: 'render', message: e instanceof Error ? e.message : String(e), file: 'main' }]
   }
 }
 
-watch(() => [editor.source, previewRow.value] as const, scheduleRender)
+watch(() => [editor.source, mappedPreviewRow.value] as const, scheduleRender)
 
 // ---------------------------------------------------------------- caret
 
@@ -277,7 +297,7 @@ export const badges = computed(() => {
   for (const m of editor.messages) {
     const tab = tabOf(m)
     if (!tab) continue
-    add(tabKey(tab), m.kind === 'purity' ? 'warning' : 'error')
+    add(tabKey(tab), isWarning(m) ? 'warning' : 'error')
   }
   return out
 })
@@ -840,7 +860,7 @@ export const variables = computed<{ path: string; hint: string }[]>(() => {
   const walk = (nodes: VarNode[]) => {
     for (const n of nodes) if (n.kind === 'leaf') out.push({ path: n.path, hint: n.value }); else walk(n.children)
   }
-  walk(buildTree(data.rowType, previewRow.value))
+  walk(buildTree(mappedRowType.value, mappedPreviewRow.value))
   return out
 })
 

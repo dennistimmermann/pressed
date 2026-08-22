@@ -1,11 +1,24 @@
-import type { Meta, PrinterProfile, RenderedLabel } from '@sprint/core'
+import type { Meta, RenderedLabel, RollLayout, Rotation, SheetLayout } from '@sprint/core'
 
-/** A printer backend: given rendered labels and the label size in mm, put them on paper. */
+/**
+ * One print run. `labels` is already expanded — copies were applied upstream, so a backend
+ * only has to impose them: `output` picks which of the two layouts below applies.
+ */
+export type PrintJob = {
+  labels: RenderedLabel[]
+  size: Meta['size']
+  /** The template's unprintable inset, mm — the document builders turn it into label padding. */
+  margin: number
+  output: 'sheet' | 'roll'
+  sheet: SheetLayout
+  roll: RollLayout
+  /** Quarter turns on the medium — the document builders own the geometry, `size` stays true. */
+  rotation: Rotation
+}
+
+/** A printer backend: given a job, put it on paper. */
 export type Printer = {
   id: string
   label: string
-  print(labels: RenderedLabel[], size: Meta['size']): Promise<void>
+  print(job: PrintJob): Promise<void>
 }
-
-/** ChiTenk K30F: 80 mm head, 203 dpi, 72 mm printable. Verified on hardware. */
-export const K30F: PrinterProfile = { dpi: 203, maxDots: 576, gapMm: 2, density: 8 }

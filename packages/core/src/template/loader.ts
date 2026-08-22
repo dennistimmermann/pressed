@@ -7,6 +7,7 @@ import {
 } from '@vue/compiler-sfc'
 import { transform } from 'sucrase'
 import { LIBRARY_NAMES, librarySources } from '../library/index'
+import { validateSubset } from '../subset'
 import type { Message, Meta } from '../types'
 import { parseMeta } from './meta'
 
@@ -128,7 +129,12 @@ export function compileTemplate(source: string, opts: CompileOptions = {}): Comp
   }
   blocks.push(`Object.assign(__modules__['sprint'], __components__);`)
 
+  // The subset check is the user's markup and CSS only — the library is ours and is exempt
+  // by construction (it is compiled from the same sources every template gets).
+  errors.push(...validateSubset(parsed.main, 'main'))
+
   for (const snippet of parsed.snippets) {
+    errors.push(...validateSubset(snippet.descriptor, `snippet:${snippet.name}`))
     blocks.push(`__components__[${JSON.stringify(snippet.name)}] = ${compileComponent(snippet.source, snippet.name, `snippet:${snippet.name}`, errors, css, opts.inspector ? snippet.locBase : false)};`)
     sources[snippet.name] = snippet.source
   }

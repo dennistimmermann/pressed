@@ -32,3 +32,6 @@ spikes/*/node_modules/
 spikes/*/output/
 spikes/*/pkg/
 *.node
+
+# Spike sources live on their feature branches, not master
+spikes/

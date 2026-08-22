@@ -1,0 +1,11 @@
+id,name,vendor,material,color_hex,diameter,density,spool_weight,settings_extruder_temp,settings_bed_temp,remaining_weight,used_weight,location,lot_nr,comment
+1,PLA Galaxy Black,Prusament,PLA,0B0B0B,1.75,1.24,201,215,60,812,188,Shelf A1,PLA-8842,sparkly
+2,PETG Clear,Prusament,PETG,E8E8E8,1.75,1.27,201,250,85,204,796,Shelf A2,PETG-1204,
+3,ASA Signal White,Polymaker,ASA,F4F4F0,1.75,1.07,140,260,100,996,4,Shelf B1,ASA-0031,new spool
+4,PLA Army Green,eSun,PLA,4B5320,1.75,1.24,224,210,60,118,882,Shelf B2,ESU-7719,almost empty
+5,TPU 95A Black,NinjaFlex,TPU,111111,1.75,1.21,180,230,50,745,255,Drawer C,TPU-5520,print slow
+6,PC Blend Smoke,Prusament,PC,3A3F44,1.75,1.22,201,275,110,322,678,Shelf A3,PC-0910,enclosure only
+7,PLA Silk Copper,eSun,PLA,B87333,1.75,1.24,224,205,55,61,939,Shelf B2,ESU-8104,save for gifts
+8,PETG Carbon,Spectrum,PETG-CF,1C1C1C,1.75,1.29,230,255,90,899,101,Shelf C1,SPE-3307,hardened nozzle
+9,ABS Deep Black,BASF,ABS,050505,1.75,1.05,190,245,100,512,488,Shelf C2,BAS-6612,ventilate
+10,PVA Support,Ultimaker,PVA,F7E7CE,2.85,1.23,150,220,60,233,767,Dry box,ULT-2210,keep dry

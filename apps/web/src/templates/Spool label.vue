@@ -1,5 +1,5 @@
 <meta>
-{ "name": "Spool label", "size": { "width": 60, "height": 40 }, "gap": 2, "printer": "K30F",
+{ "name": "Spool label", "size": { "width": 60, "height": 40 },
   "description": "Filament spool label from Spoolman: vendor, material, temperatures and a QR of the spool id." }
 </meta>
 

@@ -21,9 +21,8 @@ sources directly.
 
 | Path | What |
 |---|---|
-| `packages/core` | DOM-free: template loader/compiler/renderer, component library, 1-bit dither, TSPL encoder, data sources. `runtime/main.ts` is the sandboxed frame script. |
-| `packages/editor` | Label-agnostic Vue SFC editor: `EditorHandle`, runtime-frame client, panes. |
-| `apps/web` | The app: shell, views, stores, printers, rasterizer, tokens, `runtime.html`. |
+| `packages/core` | DOM-free: template loader/compiler/renderer, component library, 1-bit dither, TSPL encoder, imposition, data sources. `runtime/main.ts` is the sandboxed frame script. |
+| `apps/web` | The app: shell, views, stores, printers, tokens, `runtime.html`, plus `src/editor` (label-agnostic Vue SFC editor), `src/ui` (generic primitives) and `src/render` (raster + runtime frame). |
 | `docs/` | `plan-rebuild.md` (build plan), `design/` (UI spec + tokens + mockups). |
 | `spec.md` | Product spec. |
 

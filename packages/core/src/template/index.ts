@@ -4,5 +4,7 @@ export type { ParsedTemplate, ParsedSnippet, CompiledTemplate, CompileOptions } 
 export { render, evaluate, rewriteAssets } from './render'
 export type { Asset, Assets, EvaluatedTemplate } from './render'
 export { componentSchemas, propsFromSource } from './schemas'
-export { labelDocument } from './label'
+export { labelDocument, sheetDocument, setDocument, rotatedSize, PAGE_FORMATS } from './label'
+export type { SheetLayout, RollLayout, Rotation } from './label'
 export { useRow } from './sprint-module'
+export { rowPathsUsed, applyMapping, getPath, rowTypeOf, suggestMappings } from './row-paths'

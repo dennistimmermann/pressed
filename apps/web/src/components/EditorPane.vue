@@ -7,11 +7,12 @@
 -->
 <script setup lang="ts">
 import { computed } from 'vue'
+import { isWarning } from '@sprint/core'
 import { librarySources } from '@sprint/core/library/index.ts'
-import { BlockTabs, SfcEditor } from '@sprint/editor'
-import type { EditorHandle } from '@sprint/editor/editor-handle.ts'
-import type { BlockKind } from '@sprint/editor/tabs.ts'
-import { data } from '@/stores/data'
+import { BlockTabs, SfcEditor } from '@/editor'
+import type { EditorHandle } from '@/editor/editor-handle.ts'
+import type { BlockKind } from '@/editor/tabs.ts'
+import { mappedRowType } from '@/stores/data'
 import { settings } from '@/stores/settings'
 import { activeBlock, addBlock, badges, editor, filename, formatBlock, handle, insertables, offsetOf, switchTab, tabs, variables, visible } from '@/stores/editor'
 
@@ -58,7 +59,7 @@ const markers = computed(() =>
       start,
       end: eol < 0 ? editor.source.length : eol,
       message: m.message,
-      severity: (m.kind === 'purity' ? 'warning' : 'error') as 'warning' | 'error',
+      severity: (isWarning(m) ? 'warning' : 'error') as 'warning' | 'error',
     }]
   }),
 )
@@ -66,7 +67,7 @@ const markers = computed(() =>
 const editorProps = computed(() => ({
   modelValue: editor.source,
   'onUpdate:modelValue': (value: string) => { editor.source = value },
-  contextType: data.rowType,
+  contextType: mappedRowType.value,
   libraryComponents: librarySources,
   filename: filename.value,
   visible: visible.value,

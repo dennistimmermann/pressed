@@ -1,20 +1,29 @@
-import { computed, reactive } from 'vue'
+import { computed, reactive, toRaw } from 'vue'
+import { applyMapping, rowTypeOf, suggestMappings } from '@sprint/core'
 import type { Row } from '@sprint/core'
+import { buildTree, type VarNode } from '@/editor/inspector/row-tree'
+import { settings } from './settings'
+
+/** Which source the rows came from — one per module in `@/sources`. */
+export type SourceId = 'csv' | 'spoolman' | 'none'
 
 /** Rows from the current data source, and which of them get printed. */
 export const data = reactive({
-  sourceId: 'none' as 'csv' | 'spoolman' | 'none',
+  sourceId: 'none' as SourceId,
   rows: [] as Row[],
   /** Indices into `rows`. A Set because selection is a membership test, not a list. */
   selected: new Set<number>(),
   rowType: '{ n: number }',
   previewRowIndex: 0,
+  /** Where the rows came from, in a few words: the file, the host. Panels fill it in. */
+  brief: '',
 })
 
-export const selectedRows = computed(() => [...data.selected].sort((a, b) => a - b).map((i) => data.rows[i]))
-export const previewRow = computed<Row>(() => data.rows[data.previewRowIndex] ?? {})
+/** Not exported: the raw row never leaves this module — everything downstream reads the
+    mapped one below. */
+const previewRow = computed<Row>(() => data.rows[data.previewRowIndex] ?? {})
 
-export function setRows(sourceId: typeof data.sourceId, rows: Row[], rowType: string) {
+export function setRows(sourceId: SourceId, rows: Row[], rowType: string) {
   data.sourceId = sourceId
   data.rows = rows
   data.rowType = rowType
@@ -31,8 +40,58 @@ export function selectAll(on: boolean) {
   data.selected = on ? new Set(data.rows.map((_, i) => i)) : new Set()
 }
 
-/** A row's title in the list: its first non-empty string field, else the row number. */
-export function rowTitle(row: Row, index: number): string {
-  const first = Object.values(row).find((v) => typeof v === 'string' && v.trim())
-  return (first as string) ?? `row ${index + 1}`
+// ---------------------------------------------------------------- mapping
+// The template asks for `row.filament.name`; a CSV brings `Brand`. A mapping bends one into
+// the other, and *everything downstream reads the mapped rows* — raw rows never leave here.
+
+/**
+ * The leaves of the example row: what a mapping can map *from*. Same tree the `{ }` picker is
+ * built from, minus its `row.` prefix — a source field is a key in the row, not an expression.
+ */
+export const sourceFields = computed<{ path: string; sample: string }[]>(() => {
+  const out: { path: string; sample: string }[] = []
+  const walk = (nodes: VarNode[]) => {
+    for (const n of nodes) {
+      if (n.kind === 'leaf') out.push({ path: n.path.slice('row.'.length), sample: n.value })
+      else walk(n.children)
+    }
+  }
+  walk(buildTree(data.rowType, previewRow.value))
+  return out
+})
+
+/** The mapping in force: source field path → row path, for the source the rows came from. */
+export const mapping = computed<Record<string, string>>(() => settings.mappings[data.sourceId] ?? {})
+
+/** `rowPath` is what the template writes (`row.id`) or null to unmap; stored without the prefix. */
+export function setMapping(sourcePath: string, rowPath: string | null) {
+  const map = (settings.mappings[data.sourceId] ??= {})
+  if (rowPath) map[sourcePath] = rowPath.replace(/^row\./, '')
+  else delete map[sourcePath]
+}
+
+const mapped = computed(() => Object.keys(mapping.value).length > 0)
+
+/** `toRaw`: mapped rows are plain objects that get structured-cloned to the runtime frame, so
+    they must not carry Vue proxies from the reactive store in their nested values. */
+export const mappedRows = computed<Row[]>(() =>
+  mapped.value ? data.rows.map((row) => applyMapping(toRaw(row), mapping.value)) : data.rows,
+)
+export const mappedSelectedRows = computed(() =>
+  [...data.selected].sort((a, b) => a - b).map((i) => mappedRows.value[i]),
+)
+export const mappedPreviewRow = computed<Row>(() => mappedRows.value[data.previewRowIndex] ?? {})
+/** A mapping changes the row's shape, so the source's own type text stops describing it. */
+export const mappedRowType = computed(() =>
+  mapped.value && data.rows.length ? rowTypeOf(mappedRows.value[0]) : data.rowType,
+)
+
+/** The Suggest button: exact-name matches only (core `suggestMappings`), applied on top of
+    what is already mapped — returns how many it added, for the meta line. */
+export function suggestUnmapped(neededPaths: string[]): number {
+  const taken = new Set(Object.keys(mapping.value))
+  const fields = sourceFields.value.map((f) => f.path).filter((f) => !taken.has(f))
+  const found = suggestMappings(neededPaths, fields)
+  for (const [from, to] of Object.entries(found)) setMapping(from, to)
+  return Object.keys(found).length
 }

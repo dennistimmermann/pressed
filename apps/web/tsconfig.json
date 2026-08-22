@@ -9,7 +9,7 @@
       "sprint": ["../../packages/core/src/template/sprint-module.ts"]
     }
   },
-  "include": ["src", "vite.config.ts", "../../packages/editor/src"],
+  "include": ["src", "vite.config.ts"],
   // src/templates/*.vue are bundled example *sources*, read with ?raw — never app components.
   "exclude": ["src/templates"]
 }

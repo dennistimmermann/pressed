@@ -1,13 +1,13 @@
 <!--
-  Wiring only: the Inspector pane (SPEC §4.3 · §4.4) lives in `@sprint/editor`, which knows
+  Wiring only: the Inspector pane (SPEC §4.3 · §4.4) lives in `@/editor`, which knows
   nothing about labels. Here is where the caret's element, the scope's props, the cascade and
   the rule commands come from — and where each event becomes one text edit on the one model.
 -->
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
-import { InspectorPane as Inspector } from '@sprint/editor'
-import type { Loc } from '@sprint/editor/ast.ts'
+import { InspectorPane as Inspector } from '@/editor'
+import type { Loc } from '@/editor/ast.ts'
 import {
   addClassToElement, addProp, availableClasses, caretLine, declare, deleteRule,
   editor, element, elementComputed, elementMarkers, elementSchema, ensureSelector, goToOffset, handle,

@@ -6,8 +6,8 @@
 <script setup lang="ts">
 import { computed, ref, useTemplateRef, watch } from 'vue'
 import { onClickOutside, onKeyStroke } from '@vueuse/core'
-import { FileStrip, LabelSetup, ScopeRow } from '@sprint/editor'
-import type { EditorMode } from '@sprint/editor'
+import { FileStrip, LabelSetup, ScopeRow } from '@/editor'
+import type { EditorMode } from '@/editor'
 import {
   addBlock, badges, deleteSnippet, dirty, editor, enterScope, errorCount, filename, leaveScope, meta,
   promoteSnippet, renameSnippet, save, tabs, warningCount, writeMeta,
@@ -16,12 +16,9 @@ import {
 defineProps<{ mode?: EditorMode | null; modes?: EditorMode[] }>()
 defineEmits<{ 'save-as': []; 'update:mode': [mode: EditorMode] }>()
 
-/** `meta.printer` names a device model, not a backend — there is one profile so far. */
-const PRINTER_PROFILES = [{ id: 'K30F', label: 'K30F' }]
-
 /** Geometry is context for every block, so it sits in the strip, read-only (README-tabs §6). */
 const sizeText = computed(() =>
-  `${meta.value.size.width} × ${meta.value.size.height}${meta.value.gap ? ` · gap ${meta.value.gap}` : ''}`,
+  `${meta.value.size.width} × ${meta.value.size.height}${meta.value.margin ? ` · margin ${meta.value.margin}` : ''}`,
 )
 
 // Label setup: opened from the strip, closed by Esc or a click elsewhere (never by the
@@ -66,7 +63,7 @@ watch(() => editor.labelSetupOpen, (open) => {
 
     <!-- Under `Label setup…` in the strip. -->
     <div v-if="editor.labelSetupOpen" ref="setup" class="absolute top-[36px] z-30" :style="{ left: `${setupLeft}px` }">
-      <LabelSetup :meta="meta" :open="editor.labelSetupOpen" :printers="PRINTER_PROFILES" @update="writeMeta" @close="closeSetup" />
+      <LabelSetup :meta="meta" :open="editor.labelSetupOpen" @update="writeMeta" @close="closeSetup" />
     </div>
   </div>
 </template>

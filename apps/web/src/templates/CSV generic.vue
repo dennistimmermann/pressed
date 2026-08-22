@@ -1,5 +1,5 @@
 <meta>
-{ "name": "CSV generic", "size": { "width": 50, "height": 30 }, "gap": 2,
+{ "name": "CSV generic", "size": { "width": 50, "height": 30 },
   "description": "Two columns of a CSV plus a barcode. Rename row.name / row.code to your headers." }
 </meta>
 

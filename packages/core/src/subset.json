@@ -1,12 +1,34 @@
 {
-  "elements": [
-    "div", "span", "img", "br",
-    "p", "h1", "h2", "h3", "h4", "h5", "h6",
-    "b", "strong", "em", "i", "u", "small"
-  ],
-  "svgElements": [
-    "svg", "path", "rect", "g", "circle", "line", "polyline", "polygon", "text"
-  ],
+  "elements": {
+    "div": { "hint": "block" },
+    "span": { "hint": "inline", "inline": true },
+    "p": { "hint": "paragraph" },
+    "h1": { "hint": "heading" },
+    "h2": { "hint": "heading" },
+    "h3": { "hint": "heading" },
+    "h4": { "hint": "heading" },
+    "h5": { "hint": "heading" },
+    "h6": { "hint": "heading" },
+    "strong": { "hint": "bold", "inline": true },
+    "b": { "hint": "bold", "inline": true },
+    "em": { "hint": "italic", "inline": true },
+    "i": { "hint": "italic", "inline": true },
+    "u": { "hint": "underline", "inline": true },
+    "small": { "hint": "small", "inline": true },
+    "br": { "hint": "line break", "void": true },
+    "img": { "hint": "image", "inline": true, "void": true, "attrs": ["src", "alt", "width", "height"] }
+  },
+  "svgElements": {
+    "svg": {},
+    "path": {},
+    "rect": {},
+    "g": {},
+    "circle": {},
+    "line": {},
+    "polyline": {},
+    "polygon": {},
+    "text": {}
+  },
   "properties": {
     "display": ["flex", "grid", "block", "inline", "none"],
     "flex-direction": true,
@@ -28,7 +50,7 @@
     "grid-column": true,
     "grid-row": true,
     "grid-area": true,
-    "position": ["relative", "absolute"],
+    "position": ["static", "relative", "absolute"],
     "top": true,
     "right": true,
     "bottom": true,
@@ -91,14 +113,9 @@
     "transform-origin": true,
     "--*": true
   },
-  "chromeOnly": ["text-overflow", "line-clamp"],
-  "transformFunctions": ["rotate", "translate", "translateX", "translateY", "scale", "scaleX", "scaleY"],
   "units": ["mm", "pt", "px", "em", "%", "deg", "rem", "vw", "vh", "vmin", "vmax"],
-  "functions": ["calc", "var", "linear-gradient", "radial-gradient", "url"],
+  "functions": ["calc", "var", "linear-gradient", "radial-gradient", "url", "rotate", "translate", "translateX", "translateY", "scale", "scaleX", "scaleY"],
   "urlPrefixes": ["asset:", "data:"],
-  "selectors": {
-    "combinators": [" ", ">", "+", "~"],
-    "pseudoClasses": ["first-child", "last-child", "nth-child"]
-  },
+  "pseudoClasses": ["first-child", "last-child", "nth-child"],
   "atRules": ["font-face"]
 }

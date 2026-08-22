@@ -12,15 +12,14 @@
 import { computed, nextTick, ref, toRaw, useTemplateRef, watch } from 'vue'
 import { useElementSize, useEventListener, useMediaQuery } from '@vueuse/core'
 import { parseMeta } from '@sprint/core/template/meta.ts'
-import { LayersPane, ManageTemplates, PreviewPane, StatusPane } from '@sprint/editor'
-import type { EditorMode } from '@sprint/editor'
-import type { Loc } from '@sprint/editor/ast.ts'
+import { LayersPane, ManageTemplates, PreviewPane, StatusPane } from '@/editor'
+import type { EditorMode } from '@/editor'
+import type { Loc } from '@/editor/ast.ts'
 import EditorHeader from '@/components/EditorHeader.vue'
 import EditorPane from '@/components/EditorPane.vue'
 import InspectorPane from '@/components/InspectorPane.vue'
 import Splitter from '@/components/Splitter.vue'
-import { K30F } from '@/printers'
-import { rasterDataUrl } from '@/raster'
+import { rasterDataUrl } from '@/render/raster'
 import {
   addBlock, can, canFor, canvasEnterScope, canvasReorder, canvasResize, canvasSelect, classTarget,
   deleteRule, deleteSelected, dirty, duplicateSelected, editor, element, ensureSelector,
@@ -115,16 +114,20 @@ useEventListener('keydown', (e: KeyboardEvent) => {
 
 // ---------------------------------------------------------------- preview
 
+/** The raster is what the direct printer would burn, whichever backend is chosen — that is
+    what the toggle is for, so it reads the protocol's config, not the backend. */
+const profile = computed(() => ({ ...settings.printer.tspl, speed: undefined, gapMm: 0 }))
+
 const dots = computed(() => ({
-  width: Math.round((meta.value.size.width * K30F.dpi) / 25.4),
-  height: Math.round((meta.value.size.height * K30F.dpi) / 25.4),
+  width: Math.round((meta.value.size.width * profile.value.dpi) / 25.4),
+  height: Math.round((meta.value.size.height * profile.value.dpi) / 25.4),
 }))
 
 /** SPEC §8, verbatim: `60 × 40 mm · 480 × 320 dots @ 203 dpi · row N / M`, or `no data`. */
 const footnote = computed(() =>
   [
     `${meta.value.size.width} × ${meta.value.size.height} mm`,
-    `${dots.value.width} × ${dots.value.height} dots @ ${K30F.dpi} dpi`,
+    `${dots.value.width} × ${dots.value.height} dots @ ${profile.value.dpi} dpi`,
     data.rows.length ? `row ${data.previewRowIndex + 1} / ${data.rows.length}` : 'no data',
   ].join(' · '),
 )
@@ -140,11 +143,11 @@ const elementName = computed(() => {
 // The raster view is the real 1-bit bitmap, so it only gets built when it is on screen.
 const rasterSrc = ref<string>()
 watch(
-  [() => settings.previewMode, () => editor.label],
+  [() => settings.previewMode, () => editor.label, profile],
   async ([previewMode, label]) => {
     if (previewMode !== 'raster' || !label) return (rasterSrc.value = undefined)
     try {
-      rasterSrc.value = await rasterDataUrl(label, meta.value.size, K30F)
+      rasterSrc.value = await rasterDataUrl(label, meta.value.size, profile.value, meta.value.margin ?? 0)
     } catch {
       rasterSrc.value = undefined // a raster failure must not take the preview down
     }
@@ -277,7 +280,7 @@ const manageItems = computed(() =>
 // the library ever grows past a few dozen.
 watch([() => editor.manageOpen, all], async ([open]) => {
   if (!open) return
-  const { runtime } = await import('@/runtime-client')
+  const { runtime } = await import('@/render/runtime-client')
   const { labelDocument } = await import('@sprint/core/template/label.ts')
   for (const t of all.value) {
     if (thumbnails.value[t.id]) continue
@@ -286,7 +289,7 @@ watch([() => editor.manageOpen, all], async ([open]) => {
       // in the catch below and user-saved templates silently never got a thumbnail.
       const result = await runtime().render({ source: t.source, assets: toRaw(t.assets), rows: [] })
       if (result.html[0] != null)
-        thumbnails.value[t.id] = labelDocument({ html: result.html[0], css: result.css }, result.meta.size)
+        thumbnails.value[t.id] = labelDocument({ html: result.html[0], css: result.css }, result.meta.size, false, result.meta.margin ?? 0)
     } catch { /* a template that will not compile simply has no thumbnail */ }
   }
 })

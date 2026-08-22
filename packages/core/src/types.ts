@@ -4,9 +4,13 @@ export type Row = Record<string, unknown>
 /** `<meta>` block contents. Sizes are millimetres — mm in the model, pixels only at raster time. */
 export type Meta = {
   name: string
+  /** The label's size — the layout truth: spacing, counts, fit math and imposition all use it. */
   size: { width: number; height: number }
-  gap?: number
-  printer?: string
+  /**
+   * Unprintable inset in mm: content keeps this far from the label edge. The box stays `size`
+   * — only the printable area inside it shrinks.
+   */
+  margin?: number
   description?: string
 }
 
@@ -26,7 +30,7 @@ export type PrinterProfile = {
 
 /** Every message the pipeline can produce. `file` is 'main' or `snippet:<name>`. */
 export type Message = {
-  kind: 'compile' | 'render' | 'purity'
+  kind: 'compile' | 'render' | 'purity' | 'subset'
   message: string
   file: string
   line?: number
@@ -34,6 +38,12 @@ export type Message = {
   /** Index of the row that failed, for per-row render errors. */
   row?: number
 }
+
+/**
+ * Warnings never block: purity and subset messages say what the print engine will not honour,
+ * the label still compiles, renders and prints. Everything else is fatal.
+ */
+export const isWarning = (m: Message) => m.kind === 'purity' || m.kind === 'subset'
 
 /** Prop schema for the property editor, derived from `defineProps` + JSDoc. */
 export type PropSchema = {

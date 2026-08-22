@@ -14,8 +14,8 @@ test('minimal template: <template> only, no script', async () => {
 })
 
 test('<meta> is parsed, and defaults fill the gaps', () => {
-  const withMeta = parseTemplate('<meta>{ "name": "Spool", "size": { "width": 60, "height": 40 }, "gap": 2 }</meta>\n<template><i/></template>')
-  expect(withMeta.meta).toEqual({ name: 'Spool', size: { width: 60, height: 40 }, gap: 2 })
+  const withMeta = parseTemplate('<meta>{ "name": "Spool", "size": { "width": 60, "height": 40 }, "margin": 2 }</meta>\n<template><i/></template>')
+  expect(withMeta.meta).toEqual({ name: 'Spool', size: { width: 60, height: 40 }, margin: 2 })
 
   const bare = parseTemplate('<template><i/></template>')
   expect(bare.meta).toEqual({ name: 'Untitled', size: { width: 50, height: 30 } })
@@ -150,9 +150,27 @@ test('componentSchemas: runtime props + JSDoc @format from the source', () => {
   expect(qr.props.find((p) => p.name === 'ecc')).toMatchObject({ type: 'enum', values: ['L', 'M', 'Q', 'H'] })
 })
 
+// No migration: a template written before the roll owned the advance keeps its dead keys, and
+// the app simply does not read them.
+test("a template's retired <meta> keys are ignored, not an error", () => {
+  const old = parseTemplate('<meta>{ "name": "Old", "size": { "width": 60, "height": 40 }, "gap": 2, "printer": "K30F" }</meta>\n<template><i/></template>')
+  expect(old.errors).toEqual([])
+  expect(old.meta.name).toBe('Old')
+  expect(old.meta.size).toEqual({ width: 60, height: 40 })
+  expect(old.meta.margin).toBeUndefined()
+})
+
 test('labelDocument wraps a rendered label in real millimetres', () => {
   const doc = labelDocument({ html: ['<i>a</i>', '<i>b</i>'], css: '.x{}' }, { width: 60, height: 40 }, true)
   expect(doc).toContain('width:60mm;height:40mm')
   expect(doc).toContain('@page { size: 60mm 40mm; margin: 0 }')
   expect(doc.match(/class="label"/g)).toHaveLength(2)
+  expect(doc).not.toContain('padding:0mm') // no margin: a template's own .label padding stands
+})
+
+test('margin is the label box\'s padding — the box itself never changes size', () => {
+  const doc = labelDocument({ html: '<i>a</i>', css: '' }, { width: 60, height: 40 }, true, 2)
+  expect(doc).toContain('width:60mm;height:40mm')
+  expect(doc).toContain('padding:2mm')
+  expect(doc).toContain('@page { size: 60mm 40mm; margin: 0 }') // the page is the label, not the printable area
 })

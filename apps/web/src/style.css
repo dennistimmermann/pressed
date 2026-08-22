@@ -1,6 +1,4 @@
 @import "tailwindcss";
-/* The editor package is a sibling workspace, outside Tailwind's automatic source detection. */
-@source "../../../packages/editor/src";
 @import "tw-animate-css";
 @import "shadcn-vue/tailwind.css";
 
