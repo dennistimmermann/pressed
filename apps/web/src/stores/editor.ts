@@ -95,8 +95,8 @@ export const mappedState = computed<Record<string, boolean | null>>(() =>
 
 export async function initEditor() {
   await refreshTemplates()
-  // First run opens the bundled Spool label example (design §3.7).
-  const first = bundled.find((t) => t.id === 'Spool label') ?? bundled[0]
+  // First run opens the bundled spool example (design §3.7).
+  const first = bundled.find((t) => t.id === 'Spool 50x30') ?? bundled[0]
   load(findTemplate(settings.lastTemplateId)?.id ?? first.id)
 }
 

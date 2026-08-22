@@ -14,6 +14,8 @@ type Item = {
   assetsSummary?: string
   /** Standalone HTML document for the thumbnail well. */
   thumbnail?: string
+  /** Label size in mm — the well shows the label at its true aspect, fitted. */
+  size?: { width: number; height: number }
 }
 
 const props = defineProps<{ open: boolean; items: Item[] }>()
@@ -34,6 +36,16 @@ const query = ref('')
 const filter = ref('all')
 const menuId = ref<string | null>(null)
 const menuPos = ref<Record<string, string>>({})
+
+/** Fit the label (mm → CSS px at 96/25.4) into the 152 × 74 well, aspect intact. */
+const PX_PER_MM = 96 / 25.4
+function fit(size?: { width: number; height: number }) {
+  const { width, height } = size ?? { width: 50, height: 30 }
+  const w = width * PX_PER_MM
+  const h = height * PX_PER_MM
+  const k = Math.min(152 / w, 74 / h)
+  return { w: `${w * k}px`, h: `${h * k}px`, iw: `${w}px`, ih: `${h}px`, k: `scale(${k})` }
+}
 const toggleMenu = (id: string, e: MouseEvent) => {
   menuPos.value = anchorMenu((e.currentTarget as HTMLElement).getBoundingClientRect(), 132, { align: 'right', height: 140 })
   menuId.value = menuId.value === id ? null : id
@@ -139,13 +151,21 @@ function commitRename(id: string, e: Event) {
                 :aria-label="`Open ${item.name}`"
                 @click="emit('open', item.id)"
               >
-                <!-- ponytail: fixed 380px viewport scaled to the well; wide labels clip.
-                     Give the host a size prop if that ever matters. -->
-                <iframe
-                  v-if="item.thumbnail" :srcdoc="item.thumbnail" sandbox="" tabindex="-1" aria-hidden="true"
-                  class="pointer-events-none h-[280px] w-[380px] origin-top-left border-0"
-                  style="transform: scale(0.4)"
-                />
+                <!-- The label at its true aspect, fitted into the well and centred. -->
+                <span
+                  v-if="item.thumbnail" class="flex h-full w-full items-center justify-center"
+                >
+                  <span
+                    class="block overflow-hidden border border-[var(--field-border)] bg-[var(--sheet)]"
+                    :style="{ width: fit(item.size).w, height: fit(item.size).h }"
+                  >
+                    <iframe
+                      :srcdoc="item.thumbnail" sandbox="" tabindex="-1" aria-hidden="true"
+                      class="pointer-events-none origin-top-left border-0"
+                      :style="{ width: fit(item.size).iw, height: fit(item.size).ih, transform: fit(item.size).k }"
+                    />
+                  </span>
+                </span>
               </button>
 
               <input

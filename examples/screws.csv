@@ -1,0 +1,13 @@
+size,length_mm,head,drive,qty
+M2,8,pan,ph1,200
+M2,12,csk,ph1,160
+M3,6,btn,h2,250
+M3,12,csk,ph2,180
+M3,20,cap,h2.5,120
+M4,10,pan,ph2,140
+M4,20,pan,ph2,96
+M4,30,csk,t20,60
+M5,16,btn,h3,80
+M5,25,hex,h4,45
+M6,20,hex,h5,40
+M8,40,cap,h6,18

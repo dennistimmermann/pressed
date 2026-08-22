@@ -273,6 +273,7 @@ const manageItems = computed(() =>
     kind: (isBundled(t.id) ? 'built-in' : 'mine') as 'built-in' | 'mine',
     assetsSummary: Object.keys(t.assets).length ? `${Object.keys(t.assets).length} assets` : undefined,
     thumbnail: thumbnails.value[t.id],
+    size: parseMeta(t.source).meta.size,
   })),
 )
 
