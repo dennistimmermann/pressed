@@ -22,9 +22,16 @@ const TABS: { id: View; label: string }[] = [
 <template>
   <header class="on-ink flex h-[52px] flex-none items-center gap-3 border-b border-[var(--ink-border)] bg-[var(--ink)] px-3">
     <!-- Wordmark: Plex Mono 600 + the print head rule. Not a logo file. -->
-    <div class="flex items-center gap-1.5 pr-1 select-none">
+    <!-- The lockup: the flat-pressed p (its overrun foot is the wordmark's baseline), then the
+         wordmark. Primary stroke on ink chrome, per the identity's surface rule. -->
+    <div class="flex items-end gap-[7px] pr-1 select-none">
+      <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" class="mb-[2px]">
+        <g fill="none" stroke="var(--primary)" stroke-width="3.5" stroke-linecap="butt" stroke-linejoin="miter">
+          <path d="M5.4 3.5V18.25H20.9" />
+          <circle cx="9.8" cy="9.3" r="4.4" />
+        </g>
+      </svg>
       <span class="font-mono text-[16px] font-semibold tracking-[-0.02em] lowercase">pressed</span>
-      <span class="-mt-[3px] h-[3px] w-[22px] rounded-full bg-primary" />
     </div>
 
     <!-- One segmented control, three views, each with the badge that makes tabs worth it. -->
