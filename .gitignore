@@ -35,3 +35,9 @@ spikes/*/pkg/
 
 # Spike sources live on their feature branches, not master
 spikes/
+
+# Internal working documents — local only, not part of the public repo
+spec.md
+CLAUDE.md
+docs/*
+!docs/readme/

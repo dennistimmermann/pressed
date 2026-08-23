@@ -2,6 +2,10 @@
   "name": "pressed",
   "private": true,
   "version": "0.0.0",
+  "description": "Print your own labels — design a template in millimetres, wire it to a CSV or Spoolman, print in the browser or over USB.",
+  "keywords": ["labels", "label-printer", "thermal-printer", "tspl", "webusb", "spoolman", "vue"],
+  "homepage": "https://dennistimmermann.github.io/pressed/",
+  "repository": { "type": "git", "url": "https://github.com/dennistimmermann/pressed.git" },
   "type": "module",
   "workspaces": [
     "packages/*",
