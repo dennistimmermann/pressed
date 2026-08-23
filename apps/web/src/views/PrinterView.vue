@@ -1,18 +1,19 @@
 <!--
-  Printer view (design artifact "sprint Print View", see docs/design/deviations.md): two resizable
-  settings panes with the preview trough between them. The left one is the job — which label, how
-  it is imposed, how many of each, what it costs; the right one is the printer — which backend,
-  which protocol, which device. Both are `@/ui` sections (labelled row over a full-width control),
-  the same recipe the Inspector is built from.
+  Printer view (Output board): the preview trough, and **one** settings rail beside it —
+  LABEL · OUTPUT · PRINTER · COPIES. The second pane is gone: Backend, Protocol and Connection
+  were three sections holding one select and a button between them, and left ~90% of a 260px
+  column empty (F31, atlas 40 · 50). They are the PRINTER section now.
+
+  Every section is a `@/ui` PaneSection of labelled rows over full-width controls — the same
+  recipe the Inspector is built from.
 -->
 <script setup lang="ts">
 import { computed, onMounted, ref, toRaw, watch } from 'vue'
-import { onClickOutside } from '@vueuse/core'
 import { debounce } from '@/editor/runtime-client.ts'
-import type { PrinterProfile } from '@sprint/core'
-import { Field, Labeled, PaneSection, Seg, StatusBar, anchorMenu } from '@/ui'
+import type { PrinterProfile } from '@pressed/core'
+import { Field, Labeled, PaneRail, PaneSection, Picker, type PickerRow, Seg, StatusBar, type StatusCell } from '@/ui'
 import Splitter from '@/components/Splitter.vue'
-import { expandCopies } from '@sprint/core'
+import { expandCopies } from '@pressed/core'
 import { OUTPUTS } from '@/outputs'
 import { BACKENDS } from '@/printers'
 import { PROTOCOLS, protocolById } from '@/printers/protocols'
@@ -26,22 +27,47 @@ import { settings } from '@/stores/settings'
 const print = settings.print
 
 // ---------------------------------------------------------------- sections
-// Each pane is its own sticky stack: where a header sits in it — headers above, headers below.
+// One sticky stack: where a header sits in it — headers above it, headers below it.
 type Section = keyof typeof settings.printerCollapsed
-const stack = <T extends Section>(names: readonly T[]) => (s: T) => ({
-  index: names.indexOf(s),
-  below: names.length - 1 - names.indexOf(s),
+const SECTIONS = ['label', 'output', 'printer', 'copies'] as const
+const TITLES: Record<Section, string> = { label: 'Label', output: 'Output', printer: 'Printer', copies: 'Copies' }
+const at = (s: Section) => ({
+  index: SECTIONS.indexOf(s),
+  below: SECTIONS.length - 1 - SECTIONS.indexOf(s),
   collapsed: settings.printerCollapsed[s],
-  hairline: names.indexOf(s) > 0,
+  hairline: SECTIONS.indexOf(s) > 0,
 })
-const at = stack(['label', 'output', 'copies'] as const)
-const atRight = stack(['backend', 'protocol', 'connection'] as const)
 const toggle = (s: Section) => { settings.printerCollapsed[s] = !settings.printerCollapsed[s] }
 
-/** The right pane: which backend prints, and — when it is the direct one — how. */
+/** Every section shut is a 28px rail, and the trough takes the width back (F8). */
+const railed = computed(() => SECTIONS.every((n) => settings.printerCollapsed[n]))
+const railTitles = SECTIONS.map((n) => TITLES[n])
+const expand = (title: string) => { settings.printerCollapsed[SECTIONS[railTitles.indexOf(title)]] = false }
+const railAll = () => { for (const n of SECTIONS) settings.printerCollapsed[n] = true }
+
+// ---------------------------------------------------------------- the printer
+/**
+ * Backend and protocol are one choice to the user — "how does this print" — so they are one
+ * select. `browser` prints through the system dialog; every other option is the direct backend
+ * speaking one protocol.
+ */
 const config = settings.printer
-const backendLabel = computed(() => BACKENDS.find((b) => b.id === config.backend)?.label ?? config.backend)
 const protocol = computed(() => protocolById(config.protocol))
+const printerOptions = computed(() => [
+  ...BACKENDS.filter((b) => b.id !== 'direct').map((b) => ({ value: b.id, label: b.label })),
+  ...PROTOCOLS.map((p) => ({ value: `direct:${p.id}`, label: `Direct · ${p.label} over WebUSB` })),
+])
+const printerChoice = computed({
+  get: () => (config.backend === 'direct' ? `direct:${config.protocol}` : config.backend),
+  set: (value: string) => {
+    const [backend, proto] = value.split(':')
+    config.backend = backend as typeof config.backend
+    if (proto) config.protocol = proto as typeof config.protocol
+  },
+})
+const printerMeta = computed(() =>
+  config.backend === 'browser' ? 'browser dialog' : `${config.protocol} · ${config.tspl.dpi} dpi`,
+)
 
 /** A segment per option of a two-way setting; the one in force is the chosen one. */
 const seg = <T extends string>(value: T, options: { value: T; icon?: string; label?: string; title?: string; disabled?: boolean }[]) =>
@@ -69,13 +95,18 @@ const pages = computed(() => Math.max(1, Math.ceil(sequence.value.length / perPa
 const page = ref(0)
 watch([pages, () => print.output], () => { page.value = 0 })
 
-/** -1 = the one assumed label when no data is loaded (1 entry × 1 copy), shown ghosted. */
+/**
+ * F28: with nothing selected there is no job, and the trough says so — dashed slots and a
+ * `no data` chip, never a rendered label at 40% that reads as a real one (atlas 47). The
+ * template still has a face; that is what the LABEL section's thumbnail is for.
+ */
+const empty = computed(() => sequence.value.length === 0)
 const visible = computed(() => {
   const from = print.output === 'sheet' ? page.value * perPage.value : 0
   const slots: (number | undefined)[] = sequence.value.slice(from, from + perPage.value)
-  if (!slots.length) slots.push(-1) // no data → assume one copy of the template
   // Pad with empties: the rest of the raster, drawn as dotted outlines, never printed.
-  const upTo = print.output === 'sheet' ? perPage.value : Math.ceil(slots.length / plan.value.roll.perSet) * plan.value.roll.perSet
+  const perSet = plan.value.roll.perSet
+  const upTo = print.output === 'sheet' ? perPage.value : Math.max(perSet, Math.ceil(slots.length / perSet) * perSet)
   return [...slots, ...Array<number | undefined>(Math.max(0, upTo - slots.length)).fill(undefined)]
 })
 
@@ -84,7 +115,6 @@ const visible = computed(() => {
 // 150 dpi is a thumbnail, not the print — the real dots are the backend's business.
 const THUMB: PrinterProfile = { dpi: 150, maxDots: 4000, gapMm: 0, density: 8 }
 const thumbs = ref<Record<number, string>>({})
-const GHOST = 'ghost' // sentinel: render the placeholder, dimmed — a data URL can never equal it
 let token = 0
 
 const refreshThumbs = debounce(() => {
@@ -132,7 +162,7 @@ const unbind = () => { print.copies = 1 }
 watch([() => editor.source, mappedSelectedRows], () => { token++; thumbs.value = {}; refreshThumbs() })
 watch(visible, refreshThumbs, { immediate: true })
 
-const slots = computed(() => visible.value.map((i) => (i === undefined ? undefined : i === -1 ? GHOST : thumbs.value[i])))
+const slots = computed(() => visible.value.map((i) => (i === undefined ? undefined : thumbs.value[i])))
 
 /** The Label section: entry 1, at true proportion. */
 const thumbWidth = computed(() => Math.min(140, meta.value.size.width * 2.5))
@@ -164,29 +194,46 @@ const fixedCopies = computed({
   set: (n: number) => { print.copies = n },
 })
 
-const copiesOpen = ref(false)
-const copiesPos = ref<Record<string, string>>({})
+// The `{ }` picker — the same shape as the editor's, live value preview and all (atlas 25/42).
+const copiesAnchor = ref<DOMRect | null>(null)
 const toggleCopies = (e: MouseEvent) => {
-  copiesPos.value = anchorMenu((e.currentTarget as HTMLElement).getBoundingClientRect(), 160, { align: 'right', height: 180 })
-  copiesOpen.value = !copiesOpen.value
+  copiesAnchor.value = copiesAnchor.value ? null : (e.currentTarget as HTMLElement).getBoundingClientRect()
 }
-const copiesPopover = ref<HTMLElement>()
-onClickOutside(copiesPopover, () => { copiesOpen.value = false })
+const copiesRows = computed<PickerRow[]>(() =>
+  columns.value.map((column) => ({
+    value: column,
+    label: `row.${column}`,
+    preview: String(mappedPreviewRow.value[column] ?? ''),
+    on: boundColumn.value === column,
+  })),
+)
 const bind = (column: string | null) => {
   print.copies = column ? { column } : 1
-  copiesOpen.value = false
+  copiesAnchor.value = null
 }
 
-/** The whole job in one strip sentence: `12 entries × 2 copies = 24 labels · 1 sheet of A4`. */
-const jobLine = computed(() => {
-  const copies = boundColumn.value ? `· copies from ${boundColumn.value}` : `× ${fixedCopies.value} copies`
-  return `${entries.value} ${copies} = ${plan.value.labels} labels · ${jobCostSplit.value[0]}${jobCostSplit.value[1]}`
-})
-/** Brief printer settings for the bar's right side. */
-const printerBrief = computed(() => {
-  if (config.backend === 'browser') return 'Browser Print'
-  const device = printer.deviceStatus.claimed ? `● ${printer.deviceStatus.label}` : '○ not connected'
-  return `Direct · ${protocol.value.label} · ${config.tspl.dpi} dpi · density ${config.tspl.density} · ${device}`
+/** The foot: what will print, as labelled cells rather than one running sentence (F9). */
+const cells = computed<StatusCell[]>(() => {
+  if (config.backend === 'browser') {
+    const out: StatusCell[] = [{ k: 'printer', v: 'Browser Print' }]
+    if (empty.value) out.push({ v: 'no data' })
+    if (printer.busy) out.push({ v: 'printing…' })
+    if (printer.lastPrint) out.push({ k: 'last', v: printer.lastPrint })
+    if (printer.error) out.push({ v: printer.error, tone: 'error' })
+    return out
+  }
+  const out: StatusCell[] = [
+    { k: 'printer', v: `${protocol.value.label} · ${config.tspl.dpi} dpi` },
+    { k: 'density', v: String(config.tspl.density) },
+    printer.deviceStatus.claimed
+      ? { v: `● ${printer.deviceStatus.label}`, tone: 'ok' }
+      : { v: '○ not connected' },
+  ]
+  if (empty.value) out.push({ v: 'no data' })
+  if (printer.busy) out.push({ v: 'printing…' })
+  if (printer.lastPrint) out.push({ k: 'last', v: printer.lastPrint })
+  if (printer.error) out.push({ v: printer.error, tone: 'error' })
+  return out
 })
 
 onMounted(refreshDevice)
@@ -195,61 +242,19 @@ onMounted(refreshDevice)
 <template>
   <section class="flex h-full min-h-0 flex-col">
     <div class="flex min-h-0 flex-1">
-    <!-- The printer itself leads: which backend, which protocol, which device — then the job. -->
-    <div class="col" :style="{ width: `${settings.printerPaneWidth}px` }">
-      <!-- 1 · backend ------------------------------------------------------->
-      <PaneSection
-        v-bind="atRight('backend')" title="Backend" body-class="gap-[7px]" :meta="backendLabel"
-        @toggle="toggle('backend')"
-      >
-        <select v-model="config.backend" class="ctl" aria-label="backend">
-          <option v-for="b in BACKENDS" :key="b.id" :value="b.id">{{ b.label }}</option>
-        </select>
-        <p v-if="config.backend === 'browser'" class="note">prints through the system dialog — any inkjet or laser</p>
-      </PaneSection>
-
-      <!-- 2 · protocol ------------------------------------------------------>
-      <PaneSection
-        v-if="config.backend === 'direct'"
-        v-bind="atRight('protocol')" title="Protocol" body-class="gap-[7px]"
-        :meta="`${protocol.label} · ${config.tspl.dpi} dpi`" @toggle="toggle('protocol')"
-      >
-        <select v-model="config.protocol" class="ctl" aria-label="protocol">
-          <option v-for="p in PROTOCOLS" :key="p.id" :value="p.id">{{ p.label }}</option>
-        </select>
-        <component :is="protocol.Settings" />
-      </PaneSection>
-
-      <!-- 3 · connection ---------------------------------------------------->
-      <PaneSection
-        v-if="config.backend === 'direct'"
-        v-bind="atRight('connection')" title="Connection" body-class="gap-[7px]"
-        :meta="printer.deviceStatus.claimed ? printer.deviceStatus.label : '—'" @toggle="toggle('connection')"
-      >
-        <div class="flex items-center gap-2">
-          <span class="font-mono text-[10.5px]" :class="printer.deviceStatus.claimed ? 'text-[var(--ok)]' : 'text-[var(--meta-foreground)]'">
-            {{ printer.deviceStatus.claimed ? `● ${printer.deviceStatus.label}` : '○ not connected' }}
-          </span>
-          <button
-            type="button"
-            class="ml-auto h-[25px] flex-none rounded-[var(--radius-control)] border border-[var(--field-border)] px-[9px] text-[11px] transition-colors duration-[120ms] ease-out hover:bg-[var(--row-hover)]"
-            @click="connectDevice"
-          >Pick printer…</button>
-        </div>
-        <p class="note">power the printer on before plugging USB — it enumerates half-dead otherwise</p>
-      </PaneSection>
-    </div>
-    <Splitter v-model:size="settings.printerPaneWidth" :min="220" :max="380" />
-
     <component
       :is="output.Preview"
-      :slots="slots" :page="page" :pages="pages" :placeholder="placeholder"
+      :slots="slots" :page="page" :pages="pages" :empty="empty"
       @update:page="page = $event"
     />
 
-    <!-- The job pane on the far side of the trough: which label, arranged how, how many. -->
-    <Splitter v-model:size="settings.printerWidth" :min="240" :max="420" invert />
-    <div class="col" :style="{ width: `${settings.printerWidth}px` }">
+    <!-- The one settings rail: which label, arranged how, printed by what, how many. -->
+    <Splitter
+      v-if="!railed" v-model:size="settings.printerWidth" :min="240" :max="420" invert collapsible
+      @collapse="railAll"
+    />
+    <PaneRail v-if="railed" :titles="railTitles" @expand="expand" />
+    <div v-else class="col" :style="{ width: `${settings.printerWidth}px` }">
       <!-- 1 · label --------------------------------------------------------->
       <PaneSection
         v-bind="at('label')" title="Label" body-class="gap-[7px]"
@@ -283,6 +288,10 @@ onMounted(refreshDevice)
           })))"
           @pick="print.output = $event as typeof print.output"
         />
+        <!-- F26: a disabled segment gets a reason line under its group. Choosing the direct
+             backend does move the job onto the roll — but it says why, in words, instead of
+             flipping the setting behind the user's back (atlas 41). -->
+        <p v-if="config.backend !== 'browser'" class="note">sheet needs the Browser backend — a direct printer feeds from a roll</p>
         <!-- Rotation is imposition, not design: it turns the label on sheet and roll alike, so it
              sits above the output's own fields. -->
         <Labeled label="rotation">
@@ -294,7 +303,35 @@ onMounted(refreshDevice)
         <component :is="output.Settings" />
       </PaneSection>
 
-      <!-- 3 · copies -------------------------------------------------------->
+      <!-- 3 · printer: backend, protocol and device, in one section (F31) ---->
+      <PaneSection
+        v-bind="at('printer')" title="Printer" body-class="gap-[7px]" :meta="printerMeta"
+        @toggle="toggle('printer')"
+      >
+        <template v-if="config.backend === 'direct'" #meta>
+          <span class="font-mono text-[var(--t6)]" :class="printer.deviceStatus.claimed ? 'text-[var(--ok)]' : 'text-[var(--meta-foreground)]'">●</span>
+        </template>
+        <select v-model="printerChoice" class="ctl" aria-label="printer">
+          <option v-for="o in printerOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+        </select>
+        <p v-if="config.backend === 'browser'" class="note">prints through the system dialog — any inkjet or laser</p>
+        <template v-else>
+          <component :is="protocol.Settings" />
+          <div class="flex items-center gap-2">
+            <span class="font-mono text-[10.5px]" :class="printer.deviceStatus.claimed ? 'text-[var(--ok)]' : 'text-[var(--meta-foreground)]'">
+              {{ printer.deviceStatus.claimed ? `● ${printer.deviceStatus.label}` : '○ not connected' }}
+            </span>
+            <button
+              type="button"
+              class="ml-auto h-[25px] flex-none rounded-[var(--radius-control)] border border-[var(--field-border)] px-[9px] text-[11px] transition-colors duration-[120ms] ease-out hover:bg-[var(--row-hover)]"
+              @click="connectDevice"
+            >{{ printer.deviceStatus.claimed ? 'Change…' : 'Pick printer…' }}</button>
+          </div>
+          <p class="note">power the printer on before plugging USB — it enumerates half-dead otherwise</p>
+        </template>
+      </PaneSection>
+
+      <!-- 4 · copies -------------------------------------------------------->
       <PaneSection
         v-bind="at('copies')" title="Copies" body-class="gap-[7px]"
         :meta="boundColumn ? `row.${boundColumn}` : `${fixedCopies}×`" @toggle="toggle('copies')"
@@ -311,21 +348,11 @@ onMounted(refreshDevice)
               class="flex h-[25px] w-[22px] flex-none items-center justify-center rounded-[var(--radius-control)] border border-[var(--field-border)] font-mono text-[9.5px] text-[var(--accent-link)] transition-colors duration-[120ms] ease-out hover:bg-[var(--row-hover)]"
               @click="toggleCopies($event)"
             >{ }</button>
-            <div
-              v-if="copiesOpen" ref="copiesPopover"
-              class="fixed z-30 flex w-[160px] flex-col rounded-[var(--radius-trough)] border border-[var(--field-border)] bg-[var(--pane)] p-1 shadow-[var(--shadow-popover)]"
-            :style="copiesPos"
-            >
-              <button
-                type="button" class="rounded-[var(--radius-control)] px-2 py-1 text-left text-[11px] hover:bg-[var(--row-hover)]"
-                @click="bind(null)"
-              >fixed number</button>
-              <button
-                v-for="column in columns" :key="column" type="button"
-                class="rounded-[var(--radius-control)] px-2 py-1 text-left font-mono text-[10.5px] text-[var(--accent-link)] hover:bg-[var(--row-hover)]"
-                @click="bind(column)"
-              >row.{{ column }}</button>
-            </div>
+            <Picker
+              :anchor="copiesAnchor" :rows="copiesRows" action="– fixed number (unbind)" align="right"
+              placeholder="column…" empty="no data loaded — nothing to bind to"
+              @pick="bind($event)" @action="bind(null)" @close="copiesAnchor = null"
+            />
           </div>
         </Labeled>
         <p class="note">
@@ -343,12 +370,15 @@ onMounted(refreshDevice)
     <!-- One ink strip across the whole foot: the job, its status, and what will print it.
          Inline, never a toast (invariant 5). -->
     <!-- Mirrors the panes above: printer on the left, the job on the right. -->
-    <StatusBar eyebrow="Printer" class="on-ink flex-none">
-      {{ printerBrief }}
-      <span v-if="printer.busy">· printing…</span>
-      <span v-if="printer.lastPrint">· {{ printer.lastPrint }}</span>
-      <span v-if="printer.error" class="text-[var(--ink-destructive)]">· {{ printer.error }}</span>
-      <template #end>{{ jobLine }}</template>
+    <!-- The equation, right: operators plain, results in ink. -->
+    <StatusBar eyebrow="Printer" :cells="cells" class="on-ink flex-none">
+      <template #end>
+        <span>{{ entries }}</span>
+        <span v-if="boundColumn">× copies from</span><b v-if="boundColumn">row.{{ boundColumn }}</b>
+        <span v-else>×</span><b v-if="!boundColumn">{{ fixedCopies }}</b>
+        <span>=</span><b>{{ plan.labels }} labels</b>
+        <span>·</span><b>{{ jobCostSplit[0] }}</b><span>{{ jobCostSplit[1] }}</span>
+      </template>
     </StatusBar>
   </section>
 </template>

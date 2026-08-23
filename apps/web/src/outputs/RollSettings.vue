@@ -13,21 +13,22 @@ const round = (n: number) => Math.round(n * 10) / 10
 </script>
 
 <template>
-  <Labeled label="set" cells>
-    <Field v-model="roll.across" :icon="ICON.cols" />
-    <Field v-model="roll.down" :icon="ICON.rows" />
+  <!-- F25: an icon and a number is not a label. The row says which number is which. -->
+  <Labeled label="set — across × down" cells>
+    <Field v-model="roll.across" :icon="ICON.cols" title="labels across the liner" />
+    <Field v-model="roll.down" :icon="ICON.rows" title="labels down the liner" />
   </Labeled>
   <!-- No fit check on a roll: we cannot know what stock is loaded — just say how wide the set is. -->
   <p class="note">
     set <span class="text-foreground">{{ roll.across }} × {{ roll.down }}</span> =
     <span class="text-foreground">{{ round(plan.roll.set.width) }} mm</span> wide
   </p>
-  <Labeled label="margins" cells>
-    <Field v-model="roll.marginH" :icon="ICON.marginSides" unit="mm" />
-    <Field v-model="roll.marginV" :icon="ICON.marginTB" unit="mm" />
-  </Labeled>
-  <Labeled label="gap" cells>
-    <Field v-model="roll.gap" :icon="ICON.advance" unit="mm" />
+  <Labeled label="margins · gap">
+    <div class="g3">
+      <Field v-model="roll.marginH" :icon="ICON.marginSides" unit="mm" title="between labels across" />
+      <Field v-model="roll.marginV" :icon="ICON.marginTB" unit="mm" title="between labels down" />
+      <Field v-model="roll.gap" :icon="ICON.advance" unit="mm" title="advance between sets" />
+    </div>
   </Labeled>
   <p class="note">
     gap = advance between sets · preset from the profile's die-cut (TSPL <span class="text-foreground">GAP</span>)
@@ -35,5 +36,6 @@ const round = (n: number) => Math.round(n * 10) / 10
 </template>
 
 <style scoped>
+.g3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; min-width: 0; }
 .note { margin: 0; font-family: var(--font-mono); font-size: 10px; color: var(--meta-foreground); }
 </style>

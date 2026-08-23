@@ -6,7 +6,7 @@
     "jsx": "preserve",
     "paths": {
       "@/*": ["./src/*"],
-      "sprint": ["../../packages/core/src/template/sprint-module.ts"]
+      "pressed": ["../../packages/core/src/template/pressed-module.ts"]
     }
   },
   "include": ["src", "vite.config.ts"],

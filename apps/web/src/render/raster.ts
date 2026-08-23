@@ -1,6 +1,6 @@
-import { labelDocument } from '@sprint/core/template/label.ts'
-import { toBits } from '@sprint/core/raster/dither.ts'
-import type { Meta, PrinterProfile, RenderedLabel } from '@sprint/core'
+import { labelDocument } from '@pressed/core/template/label.ts'
+import { toBits } from '@pressed/core/raster/dither.ts'
+import type { Meta, PrinterProfile, RenderedLabel } from '@pressed/core'
 
 const CSS_PX_PER_MM = 96 / 25.4
 

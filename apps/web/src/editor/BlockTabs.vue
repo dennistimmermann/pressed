@@ -1,10 +1,10 @@
 <!--
-  The block-tab trough (SPEC §4.1 / §4.6): `Template N · Style N · Script`, plus `+` for a block
-  this scope does not have yet. It lives in the editor pane header, so it brings no row of its
+  The block-tab trough (SPEC §4.1 / §4.6): `Template N · Style N · Script`, plus a dashed
+  `+ block` for one this scope does not have yet. It lives in the editor pane header, so it brings no row of its
   own — which tab is active, and which scope's blocks it shows, is the host's business.
 -->
 <script setup lang="ts">
-import { anchorMenu } from '@/ui'
+import { AddRow, Menu, type MenuItem } from '@/ui'
 import { computed, ref } from 'vue'
 import { blockOf, tabKey, type Badge, type BlockKind, type TabBlock, type TabRef, type TabsModel } from './tabs'
 
@@ -36,28 +36,26 @@ const title = (kind: BlockKind) => kind[0].toUpperCase() + kind.slice(1)
 const isActive = (tab: TabRef) => tabKey(tab) === tabKey(props.active)
 const badgeOf = (tab: TabRef): Badge | undefined => props.badges[tabKey(tab)]
 
-// ---------------------------------------------------------------- add menu
+// ---------------------------------------------------------------- add block
 
-const menuOpen = ref(false)
-const menuPos = ref<Record<string, string>>({})
+const menuAnchor = ref<DOMRect | null>(null)
 const toggleMenu = (e: MouseEvent) => {
-  menuPos.value = anchorMenu((e.currentTarget as HTMLElement).getBoundingClientRect(), 240, { height: 160 })
-  menuOpen.value = !menuOpen.value
+  menuAnchor.value = menuAnchor.value ? null : (e.currentTarget as HTMLElement).getBoundingClientRect()
 }
 
-/** Blocks that do not exist in this scope — the `+` tab offers exactly these. */
-const addItems = computed(() => {
-  const items: { kind: 'script' | 'style'; label: string; description: string }[] = []
+/** Blocks that do not exist in this scope — the dashed `+ block` offers exactly these. */
+const addItems = computed<MenuItem[]>(() => {
+  const items: MenuItem[] = []
   if (!blockOf(props.model, { scope: props.scope, kind: 'script' }))
-    items.push({ kind: 'script', label: '+ script', description: '<script setup lang="ts">' })
+    items.push({ value: 'script', label: 'script', hint: 'setup lang="ts"' })
   if (!blockOf(props.model, { scope: props.scope, kind: 'style' }))
-    items.push({ kind: 'style', label: '+ style', description: '<style> block · rules for this scope' })
+    items.push({ value: 'style', label: 'style', hint: 'rules for this scope' })
   return items
 })
 
-function pick(kind: 'script' | 'style') {
-  menuOpen.value = false
-  emit('add', kind)
+function pick(kind: string) {
+  menuAnchor.value = null
+  emit('add', kind as 'script' | 'style')
 }
 </script>
 
@@ -81,18 +79,9 @@ function pick(kind: 'script' | 'style') {
       <span v-else-if="countText(b)" class="count">{{ countText(b) }}</span>
     </button>
 
-    <span v-if="addItems.length" class="add-wrap">
-      <button type="button" class="tab plus" :class="{ open: menuOpen }" aria-label="Add block" @click="toggleMenu($event)">+</button>
-      <template v-if="menuOpen">
-        <span class="backdrop" @click="menuOpen = false" />
-        <div class="menu" :style="menuPos">
-          <button v-for="item in addItems" :key="item.kind" type="button" class="menu-item" @click="pick(item.kind)">
-            <span class="k">{{ item.label }}</span>
-            <span class="d">{{ item.description }}</span>
-          </button>
-        </div>
-      </template>
-    </span>
+    <!-- The one add grammar, as the board's dashed `+ block` chip (F18). -->
+    <AddRow v-if="addItems.length" noun="block" inline class="ml-[2px]" @click="toggleMenu($event)" />
+    <Menu :anchor="menuAnchor" :items="addItems" :width="240" @pick="pick" @close="menuAnchor = null" />
   </div>
 </template>
 
@@ -150,65 +139,5 @@ function pick(kind: 'script' | 'style') {
 }
 .badge.warning {
   color: var(--warning);
-}
-
-.add-wrap {
-  position: relative;
-}
-.backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 19;
-}
-.tab.plus {
-  width: 24px;
-  padding: 0;
-  justify-content: center;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12px;
-  color: var(--muted-foreground);
-}
-.tab.plus:hover,
-.tab.plus.open {
-  background: var(--pane);
-  color: var(--foreground);
-}
-.menu {
-  position: fixed;
-  z-index: 20;
-  width: 280px;
-  padding: 5px;
-  border: 1px solid var(--field-border);
-  border-radius: var(--radius-trough);
-  background: var(--popover);
-  box-shadow: var(--shadow-popover);
-  white-space: normal;
-}
-.menu-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  width: 100%;
-  padding: 6px 9px;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-  transition: background-color 120ms ease-out;
-}
-.menu-item:hover {
-  background: var(--muted);
-}
-.menu-item .k {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11.5px;
-  font-weight: 500;
-  color: var(--foreground);
-}
-.menu-item .d {
-  font-family: var(--font-sans, system-ui, sans-serif);
-  font-size: 10.5px;
-  color: var(--muted-foreground);
 }
 </style>

@@ -12,7 +12,7 @@ import type { Message, Meta } from '../types'
 import { parseMeta } from './meta'
 
 /** Modules the compiled template code may import. Anything else is a compile error. */
-export const ALLOWED_MODULES = ['vue', 'sprint', 'qrcode'] as const
+export const ALLOWED_MODULES = ['vue', 'pressed', 'qrcode'] as const
 
 export type ParsedSnippet = {
   name: string
@@ -118,7 +118,7 @@ export function compileTemplate(source: string, opts: CompileOptions = {}): Comp
   const css: string[] = []
   const blocks: string[] = []
 
-  // Library first: the `sprint` module is topped up with them so snippets and the main
+  // Library first: the `pressed` module is topped up with them so snippets and the main
   // template can use (and import) them.
   const libNames: string[] = []
   const sources: Record<string, string> = {}
@@ -127,7 +127,7 @@ export function compileTemplate(source: string, opts: CompileOptions = {}): Comp
     sources[name] = libSource
     libNames.push(name)
   }
-  blocks.push(`Object.assign(__modules__['sprint'], __components__);`)
+  blocks.push(`Object.assign(__modules__['pressed'], __components__);`)
 
   // The subset check is the user's markup and CSS only — the library is ours and is exempt
   // by construction (it is compiled from the same sources every template gets).
@@ -167,7 +167,7 @@ function compileComponent(
   /** Offset of this SFC inside the file, or `false` for no inspector attributes at all. */
   locBase: number | false,
 ): string {
-  const id = `sprint-${name.replace(/[^\w-]/g, '_')}`
+  const id = `pressed-${name.replace(/[^\w-]/g, '_')}`
   const scopeAttr = `data-v-${id}`
   try {
     const { descriptor, errors: parseErrors } = parse(source, { filename: `${name}.vue` })

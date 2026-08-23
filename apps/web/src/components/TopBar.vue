@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import { Moon, Sun } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
-import { settings, toggleTheme } from '@/stores/settings'
 import type { View } from '@/stores/view'
 
 const view = defineModel<View>({ required: true })
@@ -25,7 +23,7 @@ const TABS: { id: View; label: string }[] = [
   <header class="on-ink flex h-[52px] flex-none items-center gap-3 border-b border-[var(--ink-border)] bg-[var(--ink)] px-3">
     <!-- Wordmark: Plex Mono 600 + the print head rule. Not a logo file. -->
     <div class="flex items-center gap-1.5 pr-1 select-none">
-      <span class="font-mono text-[16px] font-semibold tracking-[-0.02em] lowercase">sprint</span>
+      <span class="font-mono text-[16px] font-semibold tracking-[-0.02em] lowercase">pressed</span>
       <span class="-mt-[3px] h-[3px] w-[22px] rounded-full bg-primary" />
     </div>
 
@@ -45,27 +43,21 @@ const TABS: { id: View; label: string }[] = [
         @click="view = tab.id"
       >
         <span class="text-[12px]" :class="view === tab.id ? 'font-semibold' : 'font-normal'">{{ tab.label }}</span>
+        <!-- F29: a fixed 96px slot. The badge's words and dots change; the geometry never does,
+             so the tab group cannot shift under the pointer (atlas 48). -->
         <span
-          class="font-mono text-[10.5px]"
+          class="w-[96px] overflow-hidden text-left font-mono text-[var(--t6)] text-ellipsis whitespace-nowrap"
           :class="view === tab.id ? 'text-[var(--muted-foreground-2)]' : 'text-[var(--ink-faint)]'"
+          :title="props.badges[tab.id]"
         >{{ props.badges[tab.id] }}</span>
       </button>
     </nav>
 
     <div class="flex-1" />
 
-    <!-- Icon button on ink: the `--ink-control` recipe (VISUAL-SPEC §2). -->
-    <Button
-      variant="ghost" size="icon"
-      class="size-8 rounded-[var(--radius-control)] border border-[var(--ink-control-border)] bg-[var(--ink-control)] text-[var(--ink-control-fg)] hover:text-[var(--ink-foreground)]"
-      :aria-label="`Switch to ${settings.theme === 'dark' ? 'light' : 'dark'} theme`" @click="toggleTheme"
-    >
-      <Sun v-if="settings.theme === 'dark'" class="size-4" />
-      <Moon v-else class="size-4" />
-    </Button>
-
-    <!-- The only filled button in the app (design invariant 1). -->
-    <Button class="h-8 gap-2 rounded-[var(--radius-control)]" :disabled="printCount === 0" @click="emit('print')">
+    <!-- The only filled button in the app (design invariant 1); disabled keeps the fill at 38%,
+         never a grey ghost (F1). -->
+    <Button class="h-8 gap-2 rounded-[var(--radius-control)] disabled:opacity-[0.38]" :disabled="printCount === 0" @click="emit('print')">
       Print {{ printCount }}
     </Button>
   </header>

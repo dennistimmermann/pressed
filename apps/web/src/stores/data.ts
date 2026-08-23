@@ -1,6 +1,6 @@
 import { computed, reactive, toRaw } from 'vue'
-import { applyMapping, rowTypeOf, suggestMappings } from '@sprint/core'
-import type { Row } from '@sprint/core'
+import { applyMapping, rowTypeOf, suggestMappings } from '@pressed/core'
+import type { Row } from '@pressed/core'
 import { buildTree, type VarNode } from '@/editor/inspector/row-tree'
 import { settings } from './settings'
 
@@ -87,11 +87,11 @@ export const mappedRowType = computed(() =>
 )
 
 /** The Suggest button: exact-name matches only (core `suggestMappings`), applied on top of
-    what is already mapped — returns how many it added, for the meta line. */
-export function suggestUnmapped(neededPaths: string[]): number {
+    what is already mapped — returns the source fields it wired, so the view can flash them. */
+export function suggestUnmapped(neededPaths: string[]): string[] {
   const taken = new Set(Object.keys(mapping.value))
   const fields = sourceFields.value.map((f) => f.path).filter((f) => !taken.has(f))
   const found = suggestMappings(neededPaths, fields)
   for (const [from, to] of Object.entries(found)) setMapping(from, to)
-  return Object.keys(found).length
+  return Object.keys(found)
 }

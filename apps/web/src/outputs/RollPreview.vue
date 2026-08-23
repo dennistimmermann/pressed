@@ -5,7 +5,7 @@
 -->
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Trough } from '@/ui'
+import { Chip, Trough } from '@/ui'
 import { printSize } from '@/stores/printer'
 import { settings } from '@/stores/settings'
 import Cell from './Cell.vue'
@@ -17,8 +17,8 @@ const props = defineProps<{
   /** A roll never pages — the strip just runs on. Taken for the same shape as the sheet. */
   page: number
   pages: number
-  /** Ghost raster shown in empty slots when nothing is selected — the template, not a job. */
-  placeholder?: string
+  /** Nothing is selected: the strip is all dotted outlines and the trough says `no data` (F28). */
+  empty?: boolean
 }>()
 
 const roll = settings.print.roll
@@ -68,25 +68,28 @@ const setStyle = computed(() => ({
 
 <template>
   <Trough :caption="caption">
-    <div ref="wrap" class="mt-[38px] flex min-h-0 w-full flex-1 justify-center self-stretch overflow-y-auto pb-[34px]">
+    <template v-if="empty" #tag><Chip dot="off">no data</Chip></template>
+    <div ref="wrap" class="mt-[38px] flex min-h-0 w-full flex-1 justify-center self-stretch overflow-y-auto pb-[16px]">
       <!-- the ruler reads millimetres of roll, one tick per set -->
       <div class="relative w-[34px] flex-none">
         <span
           v-for="set in sets" :key="set.at"
-          class="absolute right-[8px] -translate-y-[4px] font-mono text-[7.5px] text-[var(--inherited-foreground)] after:absolute after:top-[4px] after:left-[calc(100%+2px)] after:h-px after:w-[4px] after:bg-[var(--dashed)] after:content-['']"
+          class="absolute right-[8px] -translate-y-[5px] font-mono text-[var(--t6)] text-[var(--meta-foreground)] after:absolute after:top-[5px] after:left-[calc(100%+2px)] after:h-px after:w-[5px] after:bg-[var(--field-border)] after:content-['']"
           :style="{ top: px(set.at) }"
         >{{ set.at }}</span>
+        <span class="absolute right-[8px] bottom-0 font-mono text-[var(--t2)] text-[var(--faint-foreground)]">mm</span>
       </div>
-      <!-- liner stock: a material colour, not a theme surface -->
-      <div
-        class="flex h-fit min-h-full flex-none flex-col items-center border border-b-0 border-[var(--dashed)] bg-[#f6f5f2] px-[10px]"
-        :style="{ width: stripW }"
-      >
-        <div v-for="set in sets" :key="set.at" class="grid flex-none" :style="setStyle">
-          <Cell v-for="(src, i) in set.slots" :key="i" :src="src" :placeholder="placeholder" :rotation="settings.print.rotation" :w="size.width * k" :h="size.height * k" rounded />
+      <div class="flex flex-none flex-col" :style="{ width: stripW }">
+        <!-- liner stock: a material colour, not a theme surface -->
+        <div class="flex h-fit min-h-0 flex-none flex-col items-center border border-b-0 border-[var(--dashed)] bg-[#f6f5f2] px-[10px]">
+          <div v-for="set in sets" :key="set.at" class="grid flex-none" :style="setStyle">
+            <Cell v-for="(src, i) in set.slots" :key="i" :src="src" :rotation="settings.print.rotation" :w="size.width * k" :h="size.height * k" rounded />
+          </div>
         </div>
+        <!-- The feed marker belongs *after* the last set, where the roll actually leaves the
+             head — not floated over the thumbnails (F25, atlas 39 · 40). -->
+        <p class="flex-none pt-[6px] text-center font-mono text-[var(--t6)] text-[var(--meta-foreground)]">↓ feed</p>
       </div>
-      <p class="absolute bottom-[12px] font-mono text-[10px] text-[var(--meta-foreground)]">↓ feed</p>
     </div>
   </Trough>
 </template>

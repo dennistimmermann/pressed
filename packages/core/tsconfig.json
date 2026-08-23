@@ -3,8 +3,8 @@
   "compilerOptions": {
     "lib": ["ES2023", "DOM"],
     "types": ["vite/client"],
-    // The library .vue files import from 'sprint' — the module the runtime frame injects.
-    "paths": { "sprint": ["./src/template/sprint-module.ts"] }
+    // The library .vue files import from 'pressed' — the module the runtime frame injects.
+    "paths": { "pressed": ["./src/template/pressed-module.ts"] }
   },
   "include": ["src", "runtime"]
 }

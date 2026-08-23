@@ -1,22 +1,22 @@
 import { expect, test } from 'vitest'
 import { tabsModel } from '../tabs'
 import { snippetSfc, toFileOffset } from './snippets'
-import { ENV_URI, SPRINT_MODULE_URI, sprintEnv } from './sprint-env'
+import { ENV_URI, SPRINT_MODULE_URI, pressedEnv } from './pressed-env'
 
-test('sprint-env declares the context type and one global component per library entry', () => {
-  const files = sprintEnv('{ id: number }', ['QrCode', 'Img'])
+test('pressed-env declares the context type and one global component per library entry', () => {
+  const files = pressedEnv('{ id: number }', ['QrCode', 'Img'])
   expect(files[ENV_URI]).toContain('type Row = { id: number }')
   expect(files[ENV_URI]).toContain('interface ComponentCustomProperties { row: Row }')
-  expect(files[ENV_URI]).toContain("QrCode: typeof import('./sprint/QrCode.vue').default")
-  expect(files[ENV_URI]).toContain("Img: typeof import('./sprint/Img.vue').default")
+  expect(files[ENV_URI]).toContain("QrCode: typeof import('./pressed/QrCode.vue').default")
+  expect(files[ENV_URI]).toContain("Img: typeof import('./pressed/Img.vue').default")
   // Module augmentation only works in a module — the `export {}` is load-bearing.
   expect(files[ENV_URI]).toContain('export {}')
   expect(files[SPRINT_MODULE_URI]).toContain('export function useRow(): { id: number }')
 })
 
-test('sprint-env lists the file\'s snippets as global components too', () => {
-  const files = sprintEnv('{}', ['QrCode'], ['temp', 'badge'])
-  expect(files[ENV_URI]).toContain('"temp": typeof import(\'./sprint/snippets/temp.vue\').default')
+test('pressed-env lists the file\'s snippets as global components too', () => {
+  const files = pressedEnv('{}', ['QrCode'], ['temp', 'badge'])
+  expect(files[ENV_URI]).toContain('"temp": typeof import(\'./pressed/snippets/temp.vue\').default')
 })
 
 const SOURCE = [

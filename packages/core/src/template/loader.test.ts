@@ -50,8 +50,8 @@ test('full snippet: <script setup> + scoped <style>', async () => {
   const { html, css } = await render(compiled, {})
   expect(html).toContain('Nozzle')
   expect(html).toContain('215 °C')
-  expect(html).toMatch(/data-v-sprint-temp/) // scope id applied
-  expect(css).toMatch(/\.k\[data-v-sprint-temp\]/) // scoped style rewritten
+  expect(html).toMatch(/data-v-pressed-temp/) // scope id applied
+  expect(css).toMatch(/\.k\[data-v-pressed-temp\]/) // scoped style rewritten
 })
 
 test('a snippet may not take a library component name', () => {

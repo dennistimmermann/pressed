@@ -44,7 +44,7 @@ const model = defineModel<T>({ required: true })
 }
 .label {
   font-family: var(--font-sans, system-ui, sans-serif);
-  font-size: 12px;
+  font-size: var(--t4);
   font-weight: 450;
   color: var(--muted-foreground);
 }
@@ -58,7 +58,7 @@ const model = defineModel<T>({ required: true })
 }
 .count {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10.5px;
+  font-size: var(--t5);
   font-weight: 500;
   color: var(--meta-foreground);
 }

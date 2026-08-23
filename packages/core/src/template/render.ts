@@ -2,7 +2,7 @@ import * as vue from 'vue'
 import { createSSRApp } from 'vue'
 import { renderToString } from '@vue/server-renderer'
 import QRCode from 'qrcode'
-import * as sprintModule from './sprint-module'
+import * as sprintModule from './pressed-module'
 import type { CompiledTemplate } from './loader'
 import type { Message, Row } from '../types'
 
@@ -21,7 +21,7 @@ export type EvaluatedTemplate = {
  * turns module text into objects.
  */
 export function evaluate(compiled: CompiledTemplate): EvaluatedTemplate {
-  const modules = { vue, sprint: { ...sprintModule }, qrcode: QRCode }
+  const modules = { vue, pressed: { ...sprintModule }, qrcode: QRCode }
   return new Function('__modules__', compiled.code)(modules) as EvaluatedTemplate
 }
 
@@ -37,7 +37,7 @@ export async function render(
     const { main, components } = evaluate(compiled)
     const app = createSSRApp(main)
     // `row` twice on purpose: as a template global (no import needed in the markup) and
-    // as an injection so `import { useRow } from 'sprint'` works in <script setup>.
+    // as an injection so `import { useRow } from 'pressed'` works in <script setup>.
     app.config.globalProperties.row = row
     app.provide('row', row)
     app.config.warnHandler = () => {}

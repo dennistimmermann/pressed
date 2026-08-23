@@ -50,9 +50,9 @@ const onBlur = (e: Event) => { (e.target as HTMLInputElement).value = String(mod
 /* Filled, borderless, 25px — focus swaps the border to --primary and the fill to --pane (§3). */
 .ctl {
   position: relative;
-  display: flex; align-items: center; height: 25px; min-width: 0; padding: 0 0 0 7px;
+  display: flex; align-items: center; height: var(--h-control); min-width: 0; padding: 0 0 0 7px;
   border: 1px solid transparent; border-radius: var(--radius-control); background-color: var(--field);
-  font-family: var(--font-mono); font-size: 10.5px; color: var(--foreground);
+  font-family: var(--font-mono); font-size: var(--t5); color: var(--foreground);
   transition: background-color 120ms ease-out, border-color 120ms ease-out;
 }
 .ctl:focus-within { border-color: var(--primary); background-color: var(--pane); outline: none; }
@@ -82,7 +82,7 @@ const onBlur = (e: Event) => { (e.target as HTMLInputElement).value = String(mod
 .u {
   flex: none; display: flex; align-items: center; height: 19px; margin: 0 3px 0 4px; padding: 0 5px;
   border-radius: var(--radius-badge); background: var(--field-border);
-  font-family: var(--font-mono); font-size: 8.5px; color: var(--muted-foreground);
+  font-family: var(--font-mono); font-size: 8.5px; color: var(--muted-foreground); line-height: 1;
 }
 .x + .u { margin-left: 0; }
 .u:has(select)::after { content: "▾"; margin-left: 2px; font-size: 6px; color: var(--meta-foreground); }

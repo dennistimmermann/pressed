@@ -27,6 +27,8 @@ const props = defineProps<{
   bodyClass?: string
   /** Stretch: the body takes an equal share of the pane's leftover height instead of its own. */
   fill?: boolean
+  /** This is the section the surface is currently *about*: the eyebrow is the lit one. */
+  active?: boolean
 }>()
 const emit = defineEmits<{ toggle: [] }>()
 
@@ -42,7 +44,7 @@ function toggle() {
 
 <template>
   <button type="button" class="head" :class="{ hair: hairline }" :style="vars" @click="toggle">
-    <span class="eyebrow">{{ title }}</span>
+    <span class="eyebrow" :class="{ lit: active }">{{ title }}</span>
     <span v-if="meta != null" class="meta">{{ meta }}</span>
     <slot name="meta" />
     <span class="chev">{{ collapsed ? '▸' : '▾' }}</span>
@@ -55,16 +57,19 @@ function toggle() {
 <style scoped>
 .head {
   display: flex; align-items: center; gap: 8px; width: 100%; flex: none;
-  height: 34px; padding: 10px 12px 8px; background: var(--pane); border: 0;
+  height: var(--h-section); padding: 0 12px; background: var(--pane); border: 0;
   position: sticky; top: calc(var(--i, 0) * 34px); bottom: calc(var(--below, 0) * 34px); z-index: 2;
 }
 .head.hair { border-top: 1px solid var(--section-border); }
 .eyebrow {
   flex: 1; text-align: left;
-  font-family: var(--font-sans); font-size: 10px; font-weight: 600; letter-spacing: 0.07em;
+  font-family: var(--font-sans); font-size: var(--t1); font-weight: 600; letter-spacing: 0.07em;
   text-transform: uppercase; color: var(--muted-foreground-2);
 }
-.meta { font-family: var(--font-mono); font-size: 10px; font-weight: 450; color: var(--meta-foreground); }
+.eyebrow.lit { color: var(--foreground); }
+.meta { font-family: var(--font-mono); font-size: var(--t6); font-weight: 450; color: var(--meta-foreground); }
+/* The whole 34px row is the hit target; the chevron always renders (F8). */
+.head:hover { background: var(--row-hover); }
 .chev { flex: none; font-size: 8px; color: var(--muted-foreground); }
 /* Natural height by default; `fill` adds an equal share of what is left (shrink 0: the pane
    scrolls, not the section). */

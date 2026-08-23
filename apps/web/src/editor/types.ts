@@ -1,9 +1,9 @@
-import type { ComponentSchema, Message, Meta, Row } from '@sprint/core'
+import type { ComponentSchema, Message, Meta, Row } from '@pressed/core'
 
 // Mirrors of the core types the runtime frame speaks, re-exported so editor consumers do
-// not have to depend on @sprint/core directly.
+// not have to depend on @pressed/core directly.
 export type { ComponentSchema, Message, Meta, Row }
-export { isWarning } from '@sprint/core'
+export { isWarning } from '@pressed/core'
 
 /** The three geometries of the editing view (SPEC §2): canvas only, canvas + code, code only. */
 export type EditorMode = 'blocks' | 'split' | 'code'

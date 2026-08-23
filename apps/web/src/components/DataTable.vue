@@ -5,15 +5,20 @@
 -->
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { getPath, type Row } from '@sprint/core'
-import { anchorMenu } from '@/ui'
-import { data, mapping, setMapping, sourceFields, toggleSelected } from '@/stores/data'
-import { neededPaths } from '@/stores/editor'
+import { getPath, type Row } from '@pressed/core'
+import { EmptyState, Picker, type PickerRow } from '@/ui'
+import { data, mapping, mappedPreviewRow, setMapping, sourceFields, toggleSelected } from '@/stores/data'
+import { effectiveMapping, neededPaths } from '@/stores/editor'
 
-defineProps<{
-  /** The rows to draw, filtered by the host; `index` is the one in `data.rows`. */
-  rows: { index: number; row: Row }[]
-}>()
+withDefaults(
+  defineProps<{
+    /** The rows to draw, filtered by the host; `index` is the one in `data.rows`. */
+    rows: { index: number; row: Row }[]
+    /** Source paths whose mapping just changed — their header chips flash (F6). */
+    flash?: string[]
+  }>(),
+  { flash: () => [] },
+)
 
 // ponytail: the first 20 fields, not a column picker — a source with more is what the Mapping
 // tab is for. Widen it here if a real source ever needs 40 columns on screen.
@@ -46,62 +51,75 @@ const cell = (row: Row, path: string) => {
   return value == null ? '' : String(value)
 }
 
-// ---------------------------------------------------------------- the mapping menu
+// ---------------------------------------------------------------- the mapping picker
+// The one `{ }` shape: search over 8 rows, a live value preview per row, the unbind as an action.
 const open = ref<string | null>(null)
-const pos = ref<Record<string, string>>({})
+const anchor = ref<DOMRect | null>(null)
 function openMenu(event: MouseEvent, path: string) {
-  pos.value = anchorMenu((event.currentTarget as HTMLElement).getBoundingClientRect(), 260, { height: 240 })
-  open.value = open.value === path ? null : path
+  const next = open.value === path ? null : path
+  anchor.value = next ? (event.currentTarget as HTMLElement).getBoundingClientRect() : null
+  open.value = next
 }
+const close = () => { open.value = null; anchor.value = null }
 function pick(sourcePath: string, target: string | null) {
   setMapping(sourcePath, target)
-  open.value = null
+  close()
 }
+/** What the template asks for, each showing the value it would carry for the preview row. */
+const variableRows = computed<PickerRow[]>(() =>
+  neededPaths.value.map((path) => ({
+    value: path,
+    label: path,
+    preview: String(getPath(mappedPreviewRow.value, rowPath(path)) ?? ''),
+    on: open.value ? effectiveMapping.value[open.value] === rowPath(path) : false,
+  })),
+)
+/** A column wired only because it is *named* like the variable has no mapping to take away. */
+const canUnmap = computed(() => !!open.value && !!mapping.value[open.value])
 </script>
 
 <template>
   <div class="tbl">
-    <div v-if="!data.rows.length" class="empty">load data to start — the source pane is on the left</div>
+    <EmptyState v-if="!data.rows.length" text="load a CSV or connect Spoolman to get rows" />
     <div v-else class="scroll">
       <div class="inner">
+        <!--
+          One 42px header cell per column, two lines: the field name, then what it is wired to.
+          The mapping belongs in the header — but as a second *line of the same cell*, not a
+          second row of its own; that was the ragged strip of 9px glyphs (F2, atlas 02).
+        -->
         <div class="tr head" :style="{ gridTemplateColumns: template }">
           <span />
-          <b v-for="field in columns" :key="field.path" :title="field.path" class="hcell">
-            {{ field.path }}
+          <div v-for="field in columns" :key="field.path" class="hcell">
+            <b :title="field.path">{{ field.path }}</b>
+            <button
+              type="button" class="m"
+              :class="{ unset: !effectiveMapping[field.path], flash: flash.includes(field.path) }"
+              :title="effectiveMapping[field.path] ? `feeds row.${effectiveMapping[field.path]}` : 'not mapped'"
+              @click.stop="openMenu($event, field.path)"
+            >{{ effectiveMapping[field.path] ? `→ ${effectiveMapping[field.path]}` : '–' }}</button>
             <span class="grip" @pointerdown.stop="startResize($event, field.path)" />
-          </b>
+          </div>
         </div>
-        <!-- The mapping lives in the header: each column says which template variable it is. -->
-        <div class="tr maprow" :style="{ gridTemplateColumns: template }">
-          <span />
-          <button
-            v-for="field in columns" :key="field.path" type="button"
-            class="m" :class="{ unset: !mapping[field.path] }" @click="openMenu($event, field.path)"
-          >→ {{ mapping[field.path] ?? '–' }}</button>
-        </div>
+        <!-- Zebra is the table's own rhythm and stays whatever the selection is; deselecting a
+             row empties its checkbox and nothing else (F4, atlas 04). -->
         <div
-          v-for="{ index, row } in rows" :key="index"
-          class="tr" :class="{ sel: data.selected.has(index) }" :style="{ gridTemplateColumns: template }"
+          v-for="({ index, row }, i) in rows" :key="index"
+          class="tr" :class="{ sel: data.selected.has(index), alt: i % 2 === 1 }" :style="{ gridTemplateColumns: template }"
           @click="toggleSelected(index)"
         >
           <span class="cb" :class="{ on: data.selected.has(index) }" />
           <span v-for="field in columns" :key="field.path" class="v">{{ cell(row, field.path) }}</span>
         </div>
-        <p v-if="!rows.length" class="empty">nothing matches the filter</p>
+        <EmptyState v-if="!rows.length" text="no row matches this filter" />
       </div>
     </div>
 
-    <template v-if="open">
-      <span class="backdrop" @click="open = null" />
-      <div class="menu" :style="pos">
-        <button
-          v-for="path in neededPaths" :key="path" type="button" class="item"
-          :class="{ on: mapping[open] === rowPath(path) }" @click="pick(open, path)"
-        >{{ path }}</button>
-        <p v-if="!neededPaths.length" class="none">this template reads nothing off row</p>
-        <button type="button" class="item unset" @click="pick(open, null)">– (unmap)</button>
-      </div>
-    </template>
+    <Picker
+      :anchor="anchor" :rows="variableRows" :action="canUnmap ? '– unmapped' : undefined" :width="260"
+      placeholder="variable…" empty="this template reads nothing off a row"
+      @pick="pick(open!, $event)" @action="pick(open!, null)" @close="close"
+    />
   </div>
 </template>
 
@@ -123,27 +141,38 @@ function pick(sourcePath: string, target: string | null) {
   transition: background-color 120ms ease-out;
 }
 .tr:last-child { border-bottom: 0; }
-.tr:not(.head):not(.maprow):hover { background: var(--row-hover); }
-.tr.head, .tr.maprow { position: sticky; z-index: 1; }
+/* The zebra: a row's own stripe, independent of whether it is selected (F4). */
+.tr.alt:not(.sel) { background: var(--row-hover); }
+.tr:not(.head):hover { background: var(--field); }
 .tr.head {
-  top: 0; height: 30px; font-size: 9.5px; color: var(--muted-foreground); background: var(--row-hover);
+  position: sticky; top: 0; z-index: 1; align-items: stretch; height: 42px;
+  border-bottom-color: var(--field-border); background: var(--pane); color: var(--muted-foreground);
 }
-.tr.head b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tr.maprow {
-  top: 30px; height: 26px; border-bottom-color: var(--field-border); background: var(--pane); font-size: 9px;
-}
-/* Selection is --accent plus a 2px inset edge, never a fill (invariant 1). */
-.tr.sel { background: var(--accent); box-shadow: inset 2px 0 0 var(--primary); }
+/* THE selection recipe: --accent wash plus a 1px inset ring, everywhere (F14). */
+.tr.sel { background: var(--accent); box-shadow: inset 0 0 0 1px var(--primary); }
 .tr.sel:hover { background: var(--accent); }
 .v { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 8px; }
 
-.maprow .m {
-  display: flex; align-items: center; gap: 3px; min-width: 0; padding: 0;
-  border: 0; background: transparent; font: inherit; color: var(--accent-link); text-align: left;
+/* One cell, two lines: the field name over the mapping it carries. */
+.hcell {
+  position: relative; display: flex; flex-direction: column; justify-content: center; gap: 1px;
+  min-width: 0; padding-right: 8px;
 }
-.maprow .m::after { content: "▾"; font-size: 6px; color: var(--meta-foreground); }
-.maprow .m.unset { color: var(--faint-foreground); }
-.maprow .m:hover { text-decoration: underline; }
+.hcell b {
+  font-size: var(--t5); font-weight: 450; line-height: 1.5; color: var(--foreground);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hcell .m {
+  min-width: 0; margin: 0 -4px; padding: 0 4px; border: 0; border-radius: var(--radius-badge);
+  background: transparent;
+  font-family: var(--font-mono); font-size: 9.5px; line-height: 1.4; color: var(--accent-link);
+  text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: background-color 120ms ease-out, color 120ms ease-out;
+}
+.hcell .m.unset { color: var(--faint-foreground); }
+.hcell .m:hover { text-decoration: underline; }
+/* Suggest just wrote this one — a colour change, 120ms, nothing moves (invariant 6). */
+.hcell .m.flash { background: var(--accent); color: var(--accent-foreground); }
 
 .cb {
   width: 12px; height: 12px; margin-left: 4px; flex: none; position: relative;
@@ -155,29 +184,6 @@ function pick(sourcePath: string, target: string | null) {
   font-size: 9px; line-height: 12px; color: var(--primary-foreground);
 }
 
-.empty {
-  display: grid; place-items: center; flex: 1; margin: 0; padding: 24px;
-  font-family: var(--font-mono); font-size: 10.5px; color: var(--meta-foreground);
-}
-
-/* ---- the mapping menu (the InspectorPane recipe: a backdrop and a fixed card) ---- */
-.backdrop { position: fixed; inset: 0; z-index: 19; }
-.menu {
-  position: fixed; z-index: 60; width: 260px; max-height: 320px; overflow-y: auto; padding: 6px;
-  border: 1px solid var(--field-border); border-radius: var(--radius-trough); background: var(--popover);
-  box-shadow: var(--shadow-popover);
-}
-.menu .item {
-  display: flex; align-items: center; width: 100%; height: 26px; padding: 0 9px;
-  border: 0; border-radius: var(--radius-control); background: transparent;
-  font-family: var(--font-mono); font-size: 11px; color: var(--popover-foreground); text-align: left;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.menu .item:hover { background: var(--accent); }
-.menu .item.on { color: var(--accent-foreground); box-shadow: inset 0 0 0 1px var(--primary); }
-.menu .item.unset { color: var(--faint-foreground); }
-.menu .none { margin: 0; padding: 4px 9px; font-family: var(--font-mono); font-size: 10px; color: var(--meta-foreground); }
-.hcell { position: relative; padding-right: 8px; }
 .grip {
   position: absolute; top: 0; right: 0; bottom: 0; width: 7px; cursor: col-resize;
   /* the visible line only on hover — the header stays quiet */

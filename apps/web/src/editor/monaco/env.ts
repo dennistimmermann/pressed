@@ -29,7 +29,7 @@ function register() {
 /**
  * Start the Vue language service worker and hook it up to Monaco.
  * `getSyncUris` decides which models the worker sees — the edited file plus the generated
- * environment (`sprint-env.d.ts`, the library `.vue` sources).
+ * environment (`pressed-env.d.ts`, the library `.vue` sources).
  */
 export function startLanguageService(getSyncUris: () => Uri[]) {
   register()

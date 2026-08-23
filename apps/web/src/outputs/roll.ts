@@ -1,4 +1,4 @@
-import { rollFit } from '@sprint/core'
+import { rollFit } from '@pressed/core'
 import type { Output } from './index'
 import RollPreview from './RollPreview.vue'
 import RollSettings from './RollSettings.vue'

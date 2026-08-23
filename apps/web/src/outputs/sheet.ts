@@ -1,4 +1,4 @@
-import { sheetFit } from '@sprint/core'
+import { sheetFit } from '@pressed/core'
 import type { Output } from './index'
 import SheetPreview from './SheetPreview.vue'
 import SheetSettings from './SheetSettings.vue'

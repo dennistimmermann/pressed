@@ -1,5 +1,5 @@
 import { parserOptions } from '@vue/compiler-dom'
-import { subset, type ElementRule } from '@sprint/core'
+import { subset, type ElementRule } from '@pressed/core'
 import type { ComponentSchema } from '../types'
 
 /** One entry of the insert popup: a library component, a snippet, or a plain HTML element. */

@@ -1,11 +1,13 @@
 <!--
-  The left pane (SPEC §4.2): three sections — LAYERS (the element tree of the scope's template
-  block), RULES (its style block, with use counts) and SCRIPT (read-only summary). Label-agnostic
-  and stateless: rows are ranges in the source, every command is an event the host turns into one
-  text edit, and collapse state is a prop the host persists.
+  The left pane (SPEC §4.2): three `ui/PaneSection`s — LAYERS (the element tree of the scope's
+  template block), RULES (its style block, with use counts) and SCRIPT (a read-only summary, with
+  `open` as a row of its body rather than a second target in its header). Label-agnostic and
+  stateless: rows are ranges in the source, every command is an event the host turns into one
+  text edit, and collapse state is a prop the host persists — with all three shut the host swaps
+  the pane for a `ui/PaneRail` and the canvas takes the width back.
 -->
 <script setup lang="ts">
-import { anchorMenu } from '@/ui'
+import { AddRow, EmptyState, Menu, type MenuItem, PaneSection, Picker, type PickerRow } from '@/ui'
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import type { LayerNode, Loc } from './ast'
 import type { Marker } from './editor-handle'
@@ -78,19 +80,18 @@ const ALL: Caps = { up: true, down: true, indent: true, outdent: true, unwrap: t
 const isOpen = (s: Section) => !props.collapsed?.[s]
 
 // ---------------------------------------------------------------- sections
-// The pane is the one scroller; the layout is CSS (see `.head` / `.sect`). All three sections
-// always render a header, so a header's place in the stacks is a constant: `--i` headers above
-// it stick to the top, `--below` headers under it stick to the bottom.
+// Three `ui/PaneSection`s over the pane's one scroller: chevron, sticky header, collapse-to-rail
+// (the host swaps the whole pane for a `PaneRail` when all three are shut). All three always
+// render a header, so a header's place in the two sticky stacks is a constant: `--i` headers
+// above it stick to the top, `--below` headers under it stick to the bottom.
 const SECTIONS: Section[] = ['layers', 'rules', 'script']
-const vars = (s: Section) => ({ '--i': SECTIONS.indexOf(s), '--below': SECTIONS.length - 1 - SECTIONS.indexOf(s) })
-
-const root = useTemplateRef<HTMLElement>('root')
-
-/** Toggling a section scrolls it into view; `scroll-margin` keeps it clear of the two stacks. */
-function toggleSection(s: Section) {
-  emit('toggle', s)
-  void nextTick(() => root.value?.querySelector(`[data-sect="${s}"]`)?.scrollIntoView({ block: 'nearest' }))
-}
+const at = (s: Section) => ({
+  index: SECTIONS.indexOf(s),
+  below: SECTIONS.length - 1 - SECTIONS.indexOf(s),
+  collapsed: !isOpen(s),
+  hairline: SECTIONS.indexOf(s) > 0,
+  active: props.active === s,
+})
 
 // ---------------------------------------------------------------- rows
 
@@ -131,52 +132,87 @@ function onDoubleClick(node: LayerNode) {
 }
 
 // ---------------------------------------------------------------- popovers
-// The column is narrow and clips overflow, so every popover is fixed-positioned under its button.
+// Everything that floats is `ui/Menu` or `ui/Picker`: anchored by `anchorMenu`, teleported out
+// of this narrow clipping column, viewport-clamped, one shape.
 
-const menuPos = ref<Record<string, string>>({})
-function anchor(event: MouseEvent, width = 220) {
-  menuPos.value = anchorMenu((event.currentTarget as HTMLElement).getBoundingClientRect(), width)
-}
+const menuAnchor = ref<DOMRect | null>(null)
+const rectOf = (event: MouseEvent) => (event.currentTarget as HTMLElement).getBoundingClientRect()
 
 /** The `⋯` menu: the only home for the structure commands besides the keyboard (SPEC §4.2). */
 const rowMenu = ref<LayerNode | null>(null)
 const wrapping = ref(false)
 const ruleMenu = ref<RuleRow | null>(null)
+const closeMenus = () => { rowMenu.value = null; ruleMenu.value = null; menuAnchor.value = null }
 
 function openRowMenu(event: MouseEvent, node: LayerNode) {
-  anchor(event)
+  const same = rowMenu.value?.loc.start === node.loc.start
+  menuAnchor.value = same ? null : rectOf(event)
   wrapping.value = false
-  rowMenu.value = rowMenu.value?.loc.start === node.loc.start ? null : node
+  rowMenu.value = same ? null : node
 }
 
-const rowCommands = computed(() => {
+function openRuleMenu(event: MouseEvent, rule: RuleRow) {
+  const same = ruleMenu.value?.start === rule.start
+  menuAnchor.value = same ? null : rectOf(event)
+  ruleMenu.value = same ? null : rule
+}
+
+/** Destructive last is `ui/Menu`'s own rule — the list only says what is possible. */
+const rowCommands = computed<MenuItem[]>(() => {
   const node = rowMenu.value
   if (!node) return []
   const caps = props.can?.(node.loc) ?? ALL
+  if (wrapping.value)
+    return [
+      { value: 'back', label: '‹ Back' },
+      ...wrapTags.value.map((tag) => ({ value: `wrap:${tag}`, label: tag, mono: true })),
+    ]
   return [
-    { kind: 'up', label: 'Move up', on: caps.up },
-    { kind: 'down', label: 'Move down', on: caps.down },
-    { kind: 'indent', label: 'Indent', on: caps.indent },
-    { kind: 'outdent', label: 'Outdent', on: caps.outdent },
-    { kind: 'unwrap', label: 'Unwrap', on: caps.unwrap },
-    { kind: 'duplicate', label: 'Duplicate', on: caps.duplicate },
+    { value: 'up', label: 'Move up', disabled: !caps.up },
+    { value: 'down', label: 'Move down', disabled: !caps.down },
+    { value: 'indent', label: 'Indent', disabled: !caps.indent },
+    { value: 'outdent', label: 'Outdent', disabled: !caps.outdent },
+    { value: 'unwrap', label: 'Unwrap', disabled: !caps.unwrap },
+    { value: 'duplicate', label: 'Duplicate', disabled: !caps.duplicate },
+    { value: 'wrap', label: 'Wrap in…', hint: '›' },
+    ...(isSnippet(node) ? [{ value: 'enter', label: 'Enter scope' }] : []),
+    { value: 'delete', label: 'Delete', destructive: true },
   ]
 })
 
+const ruleCommands = computed<MenuItem[]>(() =>
+  ruleMenu.value
+    ? [
+        { value: 'rename', label: 'Rename' },
+        // No confirm: deleting is one edit, ⌘Z brings it back.
+        { value: 'delete', label: `Delete rule — also strips ${ruleMenu.value.selector} from ${ruleMenu.value.uses} elements`, destructive: true },
+      ]
+    : [],
+)
+
 const wrapTags = computed(() => ['div', 'span', 'p', ...(props.wrapChoices ?? [])])
 
-function runCommand(kind: string, on = true) {
+function onRowCommand(kind: string) {
   const node = rowMenu.value
-  if (!node || !on) return
-  rowMenu.value = null
+  if (!node) return
+  if (kind === 'wrap') return void (wrapping.value = true)
+  if (kind === 'back') return void (wrapping.value = false)
+  closeMenus()
+  if (kind === 'enter') return emit('enter-scope', node.tag)
   emit('command', { kind, loc: node.loc })
+}
+
+function onRuleCommand(kind: string) {
+  const rule = ruleMenu.value
+  if (!rule) return
+  if (kind === 'rename') return startRename(rule)
+  closeMenus()
+  emit('delete-rule', rule.start)
 }
 
 // ---------------------------------------------------------------- insert menu
 
-const insertOpen = ref(false)
-const insertQuery = ref('')
-const insertInput = useTemplateRef<HTMLInputElement>('insertInput')
+const insertAnchor = ref<DOMRect | null>(null)
 
 /** Parent tag of the selected row (null at the block root) — decides which HTML fits (li in ul…). */
 const parentTagOfSelected = computed(() => {
@@ -192,25 +228,35 @@ const parentTagOfSelected = computed(() => {
   return find(props.tree, null)?.tag ?? null
 })
 
-const insertList = computed(() => {
-  if (!props.insertables) return []
-  const all = insertItems(props.insertables.components, props.insertables.snippets, parentTagOfSelected.value)
-  const q = insertQuery.value.trim().toLowerCase()
-  return q ? all.filter((i) => i.name.toLowerCase().includes(q)) : all
-})
+const insertList = computed(() =>
+  props.insertables
+    ? insertItems(props.insertables.components, props.insertables.snippets, parentTagOfSelected.value)
+    : [],
+)
+
+/** The Picker's rows: the kind badge, the name, and what it is (or why it cannot go here). */
+const BADGE: Record<InsertItem['kind'], string> = { html: '<>', snippet: 'S', component: 'C', variable: '{ }' }
+const insertRows = computed<PickerRow[]>(() =>
+  insertList.value.map((item) => ({
+    value: `${item.kind}:${item.name}`,
+    label: item.name,
+    badge: BADGE[item.kind],
+    badgeKind: item.kind === 'html' ? 'html' : item.kind === 'snippet' ? 'snip' : 'comp',
+    preview: item.illegal ?? item.hint,
+    disabled: !!item.illegal,
+  })),
+)
 
 function openInsert(event: MouseEvent) {
-  anchor(event, 288)
-  insertOpen.value = true
-  insertQuery.value = ''
-  void nextTick(() => insertInput.value?.focus())
+  insertAnchor.value = rectOf(event)
 }
 
 /** Enter inserts after the selection, ⌥Enter inside it (SPEC §4.8). */
-function pickInsert(item: InsertItem | undefined, inside = false) {
+function pickInsert(value: string, event: Event) {
+  const item: InsertItem | undefined = insertList.value.find((i) => `${i.kind}:${i.name}` === value)
   if (!item || item.illegal) return
-  insertOpen.value = false
-  emit('insert', { item, after: props.selected ?? null, inside })
+  insertAnchor.value = null
+  emit('insert', { item, after: props.selected ?? null, inside: (event as MouseEvent | KeyboardEvent).altKey })
 }
 
 // ---------------------------------------------------------------- rules
@@ -221,7 +267,7 @@ const newRule = ref<string | null>(null)
 const ruleInput = useTemplateRef<HTMLInputElement>('ruleInput')
 
 function startRename(rule: RuleRow) {
-  ruleMenu.value = null
+  closeMenus()
   renaming.value = rule.start
   renameText.value = rule.selector
 }
@@ -339,10 +385,10 @@ function onPick(event: Event) {
 </script>
 
 <template>
-  <div ref="root" class="layers-pane flex h-full min-h-0 flex-col overflow-y-auto bg-card text-card-foreground">
+  <div class="layers-pane flex h-full min-h-0 flex-col overflow-y-auto bg-card text-card-foreground">
     <!-- E12: one header, one select, the section's own dashed action. Same events. -->
     <template v-if="compact">
-      <div class="head on">
+      <div class="head">
         <span class="eyebrow">{{ onRules ? 'Rules' : 'Layers' }}</span>
         <select class="pick" :value="pickValue" :aria-label="onRules ? 'Rules' : 'Layers'" @change="onPick">
           <option value="" disabled>{{ pickOptions.length ? 'pick…' : (onRules ? 'no rules yet — add one with +' : 'no elements yet — insert one with +') }}</option>
@@ -354,21 +400,18 @@ function onPick(event: Event) {
           v-if="onRules && newRule !== null" ref="ruleInput" v-model="newRule" class="rule-input" placeholder=".selector"
           @keydown.enter.prevent="commitNewRule" @keydown.escape="newRule = null" @blur="commitNewRule"
         >
-        <button v-else-if="onRules" type="button" class="dashed" @click="newRule = ''">+ New rule</button>
-        <button v-else-if="insertables" type="button" class="dashed" @click="openInsert">+ Insert element</button>
+        <AddRow v-else-if="onRules" noun="rule" @click="newRule = ''" />
+        <AddRow v-else-if="insertables" noun="element" @click="openInsert" />
       </div>
     </template>
 
     <template v-else>
     <!-- ---------------------------------------------------------- LAYERS -->
-    <button type="button" class="head" :class="{ on: active === 'layers' }" :style="vars('layers')" @click="toggleSection('layers')">
-      <span class="eyebrow flex-1 text-left">Layers</span>
-      <span class="meta">{{ total }} element{{ total === 1 ? '' : 's' }}</span>
-      <span class="chev">{{ isOpen('layers') ? '▾' : '▸' }}</span>
-    </button>
-
     <!-- List and dashed action are one section body, so the action rides at the section's foot. -->
-    <div v-if="isOpen('layers')" class="sect" data-sect="layers" :style="vars('layers')">
+    <PaneSection
+      v-bind="at('layers')" title="Layers" fill
+      :meta="`${total} element${total === 1 ? '' : 's'}`" @toggle="emit('toggle', 'layers')"
+    >
     <div
       role="tree"
       tabindex="0"
@@ -392,7 +435,7 @@ function onPick(event: Event) {
           dropAt(row.node, 'inside') && 'ring-1 ring-[var(--primary)] ring-inset',
           matches && !matches(row.node) && 'opacity-45',
         ]"
-        :style="{ paddingLeft: `${14 + row.depth * 23}px`, '--indent': `${row.depth * 23}px` }"
+        :style="{ paddingLeft: `${10 + row.depth * 23}px`, '--indent': `${row.depth * 23}px` }"
         @click="emit('select', row.node.loc)"
         @dblclick="onDoubleClick(row.node)"
         @dragstart="onDragStart($event, row.node)"
@@ -423,22 +466,16 @@ function onPick(event: Event) {
         <button type="button" class="dots" aria-label="commands" @click.stop="openRowMenu($event, row.node)">⋯</button>
       </div>
 
-      <p v-if="!rows.length" class="empty">no elements yet — insert one with +</p>
+      <EmptyState v-if="!rows.length" text="insert an element to start building the label" />
     </div>
 
     <div class="foot">
-      <button v-if="insertables" type="button" class="dashed" @click="openInsert">+ Insert element</button>
+      <AddRow v-if="insertables" noun="element" @click="openInsert" />
     </div>
-    </div>
+    </PaneSection>
 
     <!-- ----------------------------------------------------------- RULES -->
-    <button type="button" class="head hair" :class="{ on: active === 'rules' }" :style="vars('rules')" @click="toggleSection('rules')">
-      <span class="eyebrow flex-1 text-left">Rules</span>
-      <span class="meta">{{ rules?.length ?? 0 }}</span>
-      <span class="chev">{{ isOpen('rules') ? '▾' : '▸' }}</span>
-    </button>
-
-    <div v-if="isOpen('rules')" class="sect" data-sect="rules" :style="vars('rules')">
+    <PaneSection v-bind="at('rules')" title="Rules" fill :meta="rules?.length ?? 0" @toggle="emit('toggle', 'rules')">
     <div class="list">
       <template v-for="(rule, i) in rules ?? []" :key="rule.start">
         <!-- Borrowed rules come last, under a hairline: they are not this scope's to own. -->
@@ -458,12 +495,12 @@ function onPick(event: Event) {
             <span v-if="foreign(rule)" class="hint">{{ rootName }}</span>
             <span v-if="level(rule.markers)" class="hint" :class="level(rule.markers)">● {{ rule.markers?.length }}</span>
             <span class="hint" :class="!rule.uses && 'unused'">×{{ rule.uses }}</span>
-            <button type="button" class="dots" aria-label="commands" @click.stop="(anchor($event), (ruleMenu = ruleMenu?.start === rule.start ? null : rule))">⋯</button>
+            <button type="button" class="dots" aria-label="commands" @click.stop="openRuleMenu($event, rule)">⋯</button>
           </template>
         </div>
       </template>
 
-      <p v-if="!rules?.length" class="empty">no rules yet — add one with +</p>
+      <EmptyState v-if="!rules?.length" text="add a rule to style this scope" />
     </div>
 
     <div class="foot">
@@ -473,98 +510,48 @@ function onPick(event: Event) {
         v-if="newRule !== null" ref="ruleInput" v-model="newRule" class="rule-input" placeholder=".selector"
         @keydown.enter.prevent="commitNewRule" @keydown.escape="newRule = null" @blur="commitNewRule"
       >
-      <button v-else type="button" class="dashed" @click="newRule = ''">+ New rule</button>
+      <AddRow v-else noun="rule" @click="newRule = ''" />
     </div>
-    </div>
+    </PaneSection>
 
     <!-- ---------------------------------------------------------- SCRIPT -->
-    <div class="head hair" :class="{ on: active === 'script' }" :style="vars('script')">
-      <button type="button" class="flex flex-1 items-center gap-2" @click="emit('open-script')">
-        <span class="eyebrow flex-1 text-left">Script</span>
-        <!-- E1 · E2: `opens Code` in Blocks (there is no editor pane there), `→ tab` otherwise. -->
-        <span class="meta">{{ !script ? '–' : opensCode ? 'opens Code' : '→ tab' }}</span>
-      </button>
-      <button v-if="script" type="button" class="chev" @click="toggleSection('script')">{{ isOpen('script') ? '▾' : '▸' }}</button>
-    </div>
-
-    <div v-if="script && isOpen('script')" class="sect" data-sect="script" :style="vars('script')">
+    <!-- The whole 34px row toggles, like every other section; opening the block is a row in the
+         body, and a scope with no script gets the one add grammar instead (F8 · F18). -->
+    <PaneSection
+      v-bind="at('script')" title="Script" :meta="script ? `${script.lines} lines` : '–'"
+      @toggle="emit('toggle', 'script')"
+    >
       <div class="list">
-        <div v-for="p in script.props" :key="p.name" class="row cursor-default">
-          <span class="tag">{{ p.name }}</span>
-          <span class="cls">{{ p.type }}</span>
-        </div>
-        <p v-if="!script.props.length" class="empty !pb-2 font-mono">{{ script.lines }} lines</p>
+        <template v-if="script">
+          <div v-for="p in script.props" :key="p.name" class="row cursor-default">
+            <span class="tag">{{ p.name }}</span>
+            <span class="cls">{{ p.type }}</span>
+          </div>
+          <!-- E1 · E2: `opens Code` in Blocks (there is no editor pane there), `→ tab` otherwise. -->
+          <button type="button" class="row open" @click="emit('open-script')">
+            <span class="tag">open</span><span class="flex-1" /><span class="hint">{{ opensCode ? 'opens Code' : '→ tab' }}</span>
+          </button>
+        </template>
       </div>
-    </div>
+      <div v-if="!script" class="foot"><AddRow noun="script" @click="emit('open-script')" /></div>
+    </PaneSection>
 
     </template>
 
     <!-- --------------------------------------------------------- popovers -->
-    <template v-if="rowMenu || ruleMenu || insertOpen">
-      <span class="backdrop" @click="((rowMenu = null), (ruleMenu = null), (insertOpen = false))" />
-
-      <!-- `⋯` on an element row -->
-      <div v-if="rowMenu" class="menu" :style="{ ...menuPos, width: '220px' }">
-        <template v-if="wrapping">
-          <button type="button" class="item" @click="wrapping = false"><span class="flex-1 text-left">‹ Back</span></button>
-          <button v-for="tag in wrapTags" :key="tag" type="button" class="item mono" @click="runCommand(`wrap:${tag}`)">
-            <span class="flex-1 text-left">{{ tag }}</span>
-          </button>
-        </template>
-        <template v-else>
-          <button
-            v-for="item in rowCommands" :key="item.kind" type="button" class="item"
-            :disabled="!item.on" @click="runCommand(item.kind, item.on)"
-          >
-            <span class="flex-1 text-left">{{ item.label }}</span>
-          </button>
-          <button type="button" class="item" @click.stop="wrapping = true">
-            <span class="flex-1 text-left">Wrap in…</span><span class="key">›</span>
-          </button>
-          <button
-            v-if="isSnippet(rowMenu)" type="button" class="item"
-            @click="((emit('enter-scope', rowMenu!.tag)), (rowMenu = null))"
-          >
-            <span class="flex-1 text-left">Enter scope</span>
-          </button>
-          <hr>
-          <button type="button" class="item danger" @click="runCommand('delete')">
-            <span class="flex-1 text-left">Delete</span>
-          </button>
-        </template>
-      </div>
-
-      <!-- `⋯` on a rule row -->
-      <div v-if="ruleMenu" class="menu" :style="{ ...menuPos, width: '260px' }">
-        <button type="button" class="item" @click="startRename(ruleMenu)"><span class="flex-1 text-left">Rename</span></button>
-        <hr>
-        <!-- No confirm: deleting is one edit, ⌘Z brings it back. -->
-        <button type="button" class="item danger" @click="(emit('delete-rule', ruleMenu.start), (ruleMenu = null))">
-          <span class="flex-1 text-left">Delete rule — also strips {{ ruleMenu.selector }} from {{ ruleMenu.uses }} elements</span>
-        </button>
-      </div>
-
-      <!-- `+ Insert element` -->
-      <div v-if="insertOpen" class="menu" :style="{ ...menuPos, width: '288px' }" @keydown.escape="insertOpen = false">
-        <input
-          ref="insertInput" v-model="insertQuery" placeholder="component or element…"
-          @keydown.enter.prevent="pickInsert(insertList.find((i) => !i.illegal), $event.altKey)"
-        >
-        <ul role="listbox">
-          <li
-            v-for="item in insertList" :key="item.kind + item.name" role="option"
-            :class="item.illegal && 'off'" @mousedown.prevent="pickInsert(item, $event.altKey)"
-          >
-            <span class="badge" :class="item.kind === 'html' ? 'html' : item.kind === 'snippet' ? 'snip' : 'comp'">
-              {{ item.kind === 'html' ? '&lt;&gt;' : item.kind === 'snippet' ? 'S' : 'C' }}
-            </span>
-            <span class="name">{{ item.name }}</span>
-            <span class="hint">{{ item.illegal ?? item.hint }}</span>
-          </li>
-          <li v-if="!insertList.length" class="none">nothing fits here</li>
-        </ul>
-      </div>
-    </template>
+    <!-- One shape for all three: `ui/Menu` items, `ui/Picker` for the searchable list. -->
+    <Menu
+      :anchor="rowMenu ? menuAnchor : null" :items="rowCommands" :width="220"
+      @pick="onRowCommand" @close="closeMenus"
+    />
+    <Menu
+      :anchor="ruleMenu ? menuAnchor : null" :items="ruleCommands" :width="260"
+      @pick="onRuleCommand" @close="closeMenus"
+    />
+    <Picker
+      :anchor="insertAnchor" :rows="insertRows" :width="288" placeholder="component or element…"
+      empty="nothing fits here" @pick="pickInsert" @close="insertAnchor = null"
+    />
   </div>
 </template>
 
@@ -576,35 +563,23 @@ function onPick(event: Event) {
   --row-class: var(--muted-foreground);
 }
 
-/* ---- section header: 34px, eyebrow left, mono meta right, ▾ collapse ----
-   The pane is the scroller and the headers are its direct children, so each one can stick
-   twice: under the `--i` headers above it, and over the `--below` headers under it. Opaque,
-   because the rows scroll behind them. */
+/* The section chrome is `ui/PaneSection`'s (34px sticky header, chevron, mono meta); this pane
+   contributes only what goes *inside* a body. The compact (E12) header below is its own thing. */
 .head {
   display: flex; align-items: center; gap: 8px; flex: none;
   height: 34px; padding: 10px 12px 8px; background: var(--pane); border: 0; width: 100%;
-  position: sticky; top: calc(var(--i, 0) * 34px); bottom: calc(var(--below, 0) * 34px); z-index: 2;
 }
-.head.hair { border-top: 1px solid var(--section-border); }
-.head.on .eyebrow { color: var(--foreground); }
 .meta { font-family: var(--font-mono); font-size: 10.5px; font-weight: 450; color: var(--meta-foreground); }
-.chev { flex: none; font-size: 8px; color: var(--muted-foreground); background: transparent; border: 0; }
 
-/* ---- section body: content height plus an equal share of what is left. Nothing scrolls but
-       the pane, so an open section never squeezes (shrink 0) — it pushes the pane's scrollbar. */
-.sect {
-  display: flex; flex-direction: column; flex: 1 0 auto;
-  scroll-margin-top: calc(var(--i, 0) * 34px + 34px);
-  scroll-margin-bottom: calc(var(--below, 0) * 34px);
-}
-.foot { flex: none; padding: 0 8px 8px; }
+.foot { flex: none; padding-top: 4px; }
 
 /* ---- rows ---- */
-.list { flex: 1 0 auto; padding: 0 8px 8px; outline: none; }
+.list { flex: 1 0 auto; outline: none; }
 .list:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .row {
   position: relative; display: flex; align-items: center; gap: 7px;
-  height: 27px; padding: 0 9px 0 14px; border-radius: var(--radius-control); cursor: pointer; /* 14: room for the error dot */
+  width: 100%; height: 27px; padding: 0 5px 0 10px; border-radius: var(--radius-control); cursor: pointer; /* 10: room for the error dot */
+  border: 0; background: transparent; text-align: left;
   font-family: var(--font-mono); font-size: 11.5px; font-weight: 500; color: var(--row-tag);
   transition: background-color 120ms ease-out, color 120ms ease-out;
 }
@@ -621,7 +596,6 @@ function onPick(event: Event) {
 .hint.error { color: var(--destructive); }
 /* Sits in the row's left padding so names stay aligned whether or not a sibling has one. */
 .err { position: absolute; left: calc(var(--indent, 0px) + 3px); top: 0; line-height: 27px; font-size: 8px; color: var(--destructive); }
-.empty { padding: 6px 9px 28px; text-align: center; font-size: 11px; color: var(--muted-foreground); }
 
 .badge {
   flex: none; padding: 2.5px 4px; border-radius: var(--radius-badge);
@@ -641,16 +615,11 @@ function onPick(event: Event) {
 .row.selected .dots { color: inherit; font-weight: 600; }
 .caret:focus-visible, .dots:focus-visible { outline: 2px solid var(--primary); border-radius: var(--radius-control); }
 
-/* Drop indicator: a 2px accent rule between rows; "inside" is an inset ring on the row. */
-.line { position: absolute; left: 9px; right: 9px; height: 2px; border-radius: 999px; background: var(--primary); pointer-events: none; }
+.row.open .hint { color: var(--accent-link); }
 
-/* ---- footer actions: the one dashed control per section ---- */
-.dashed {
-  width: 100%; height: 32px; border: 1px dashed var(--dashed); border-radius: var(--radius-control); background: transparent;
-  font-size: 11px; font-weight: 500; color: var(--accent-link);
-  transition: background-color 120ms ease-out, border-color 120ms ease-out;
-}
-.dashed:hover { border-color: var(--primary); background: var(--accent); }
+/* Drop indicator: a 2px accent rule between rows; "inside" is an inset ring on the row. */
+.line { position: absolute; left: 0; right: 0; height: 2px; border-radius: 999px; background: var(--primary); pointer-events: none; }
+
 .pick {
   flex: 1; min-width: 0; height: 24px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--radius-control);
   background: var(--field); font-family: var(--font-mono); font-size: 11.5px; color: var(--foreground);
@@ -661,32 +630,5 @@ function onPick(event: Event) {
 }
 .rule-input:focus-visible, .rename:focus-visible { border-color: var(--primary); background: var(--pane); }
 /* The scope's own rules, a hairline, then the ones it only borrows from the file's block. */
-.rule-sep { height: 1px; margin: 5px 9px; background: var(--section-border); }
-
-/* ---- popovers (SPEC §4.8) ---- */
-.backdrop { position: fixed; inset: 0; z-index: 19; }
-.menu {
-  position: fixed; z-index: 60; padding: 6px;
-  border: 1px solid var(--field-border); border-radius: var(--radius-trough); background: var(--popover);
-  box-shadow: var(--shadow-popover);
-}
-.menu hr { margin: 4px 0; border: 0; border-top: 1px solid var(--section-border); }
-.item {
-  display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 9px; border: 0; border-radius: var(--radius-control);
-  background: transparent; font-size: 12px; color: var(--popover-foreground); text-align: left;
-}
-.item.mono { font-family: var(--font-mono); font-size: 11.5px; }
-.item:hover:not(:disabled) { background: var(--accent); }
-.item:disabled { opacity: 0.4; }
-.item.danger { color: var(--destructive); }
-
-.menu input { width: 100%; height: 28px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--radius-control); background: var(--field); font-size: 12px; outline: none; }
-.menu input:focus-visible { border-color: var(--primary); background: var(--pane); }
-.menu ul { max-height: 260px; margin: 6px 0 0; padding: 0; overflow: auto; list-style: none; }
-.menu li { display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 6px; border-radius: var(--radius-control); cursor: default; }
-.menu li:hover:not(.off) { background: var(--accent); }
-.menu li.off { opacity: 0.45; }
-.menu li.none { color: var(--muted-foreground); font-size: 11px; }
-.menu .name { font-family: var(--font-mono); font-size: 11.5px; font-weight: 500; }
-.menu .hint { margin-left: auto; }
+.rule-sep { height: 1px; margin: 5px 0; background: var(--section-border); }
 </style>

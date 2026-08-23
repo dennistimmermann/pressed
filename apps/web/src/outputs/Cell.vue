@@ -1,22 +1,19 @@
 <!--
-  One cell of the imposition raster, shared by both previews: a rendered label, the ghosted
-  placeholder ('ghost' — the assumed label when nothing is selected), or an empty cell nothing
-  prints on, drawn as a dotted outline.
+  One cell of the imposition raster, shared by both previews: a rendered label, or an empty cell
+  nothing prints on, drawn as a dotted outline. There is no third state — a job with no rows is
+  all dotted outlines, never a ghost of the template that reads like a real job (F28).
 
   The cell is already the *rotated* footprint (the fit math sized it); the raster inside is a
   plain unrotated label image, turned here from the px size the parent already knows.
 -->
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { Rotation } from '@sprint/core'
+import type { Rotation } from '@pressed/core'
 
 /** `w`/`h`: the cell's own px size — the parent computed it for the grid anyway. A quarter-turned
     image needs those dimensions *swapped*, and CSS cannot express "width = parent height"
     (container-query units mis-resolve here, and ResizeObserver stalls in throttled tabs). */
-const props = defineProps<{ src?: string; placeholder?: string; rounded?: boolean; rotation?: Rotation; w: number; h: number }>()
-
-const ghost = computed(() => props.src === 'ghost')
-const img = computed(() => (ghost.value ? props.placeholder : props.src))
+const props = defineProps<{ src?: string; rounded?: boolean; rotation?: Rotation; w: number; h: number }>()
 
 const turned = computed(() => (props.rotation ?? 0) % 360)
 const imgStyle = computed(() => {
@@ -44,6 +41,6 @@ const imgStyle = computed(() => {
       rounded && 'rounded-[var(--radius-control)]',
     ]"
   >
-    <img v-if="img" :src="img" alt="" class="h-full w-full object-fill" :class="ghost && 'opacity-40'" :style="imgStyle">
+    <img v-if="src" :src="src" alt="" class="h-full w-full object-fill" :style="imgStyle">
   </div>
 </template>

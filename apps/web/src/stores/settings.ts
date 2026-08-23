@@ -1,7 +1,7 @@
-import { reactive, watch, watchEffect } from 'vue'
+import { reactive, watch } from 'vue'
 import type { EditorMode, TabRef } from '@/editor'
-import type { RollLayout, Rotation, SheetLayout } from '@sprint/core'
-import type { Copies } from '@sprint/core'
+import type { RollLayout, Rotation, SheetLayout } from '@pressed/core'
+import type { Copies } from '@pressed/core'
 
 /** A reactive object mirrored into localStorage. Plain modules, no Pinia — there is one app. */
 export function persisted<T extends object>(key: string, initial: T): T {
@@ -38,7 +38,6 @@ export type PrintSettings = {
 }
 
 export type Settings = {
-  theme: 'light' | 'dark'
   printer: PrinterSettings
   /** Editor mode per template id (SPEC §6); `split` is the default. */
   modeByTemplate: Record<string, EditorMode>
@@ -52,10 +51,9 @@ export type Settings = {
   /** Which Inspector sections are collapsed (SPEC §4.3). The keys are the element-mode names;
       rule mode reuses them in order (props → SELECTOR, attributes → USED BY). */
   inspectorCollapsed: Record<'props' | 'attributes' | 'logic' | 'style', boolean>
-  /** Printer view: the two column widths in px, and which of their sections are collapsed. */
+  /** Printer view: the one rail's width in px, and which of its sections are collapsed. */
   printerWidth: number
-  printerPaneWidth: number
-  printerCollapsed: Record<'label' | 'output' | 'copies' | 'backend' | 'protocol' | 'connection', boolean>
+  printerCollapsed: Record<'label' | 'output' | 'printer' | 'copies', boolean>
   /** Canvas size inside Split mode (height, or width when side by side) and the flip. */
   splitSize: number
   /** Code mode: height of the Preview above the Inspector, px (SPEC §2 default 240). */
@@ -81,8 +79,7 @@ export type Settings = {
   print: PrintSettings
 }
 
-export const settings = persisted<Settings>('sprint.settings', {
-  theme: matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+export const settings = persisted<Settings>('pressed.settings', {
   printer: defaultPrinter(),
   modeByTemplate: {},
   tabByTemplate: {},
@@ -91,8 +88,7 @@ export const settings = persisted<Settings>('sprint.settings', {
   layersCollapsed: { layers: false, rules: true, script: true },
   inspectorCollapsed: { props: false, attributes: false, logic: false, style: false },
   printerWidth: 300,
-  printerPaneWidth: 260,
-  printerCollapsed: { label: false, output: false, copies: false, backend: false, protocol: false, connection: false },
+  printerCollapsed: { label: false, output: false, printer: false, copies: false },
   splitSize: 326,
   previewHeight: 240,
   editorView: 'block',
@@ -115,14 +111,19 @@ export const settings = persisted<Settings>('sprint.settings', {
   },
 })
 
-// The theme lives on <html> so the runtime frame (a separate document) can never inherit it —
-// the rendered label is never themed (design invariant 3).
-watchEffect(() => document.documentElement.classList.toggle('dark', settings.theme === 'dark'))
+/**
+ * F10: a pane width restored from storage is clamped to the minimum its Splitter would allow.
+ * A stored `0` — what dragging a splitter shut used to write — made the pane invisible with no
+ * way back (atlas 11); collapsing is what the section chevrons and the 28px rail are for.
+ */
+const MIN_WIDTH = { layersWidth: 180, inspectorWidth: 300, dataWidth: 200, printerWidth: 240 } as const
+for (const [key, min] of Object.entries(MIN_WIDTH) as [keyof typeof MIN_WIDTH, number][])
+  settings[key] = Math.max(min, settings[key] || min)
 
 // Still developing: no migrations — a stored sheet from an older shape is simply reset.
 if (!('backend' in settings.printer)) settings.printer = defaultPrinter()
+if (!('printer' in settings.printerCollapsed))
+  settings.printerCollapsed = { label: false, output: false, printer: false, copies: false }
 settings.print.rotation ??= 0
 if (!('alignH' in settings.print.sheet))
   settings.print.sheet = { format: 'A4', countH: 3, countV: 8, gapH: 7, gapV: 5, alignH: 'center', alignV: 'center', marginTop: 10, marginLeft: 10 }
-
-export const toggleTheme = () => { settings.theme = settings.theme === 'dark' ? 'light' : 'dark' }

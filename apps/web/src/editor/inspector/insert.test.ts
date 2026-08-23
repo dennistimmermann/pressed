@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { subset } from '@sprint/core'
+import { subset } from '@pressed/core'
 import { componentText, insertItems } from './insert'
 
 const qr = { name: 'QrCode', props: [{ name: 'value', type: 'string', required: true }, { name: 'size', type: 'string', required: false }] } as never
