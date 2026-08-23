@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/readme/logo.svg" width="88" alt="The Pressed mark: a geometric lowercase p whose descender is pressed flat, bending to run out horizontally.">
+</p>
+
 <h1 align="center">Pressed</h1>
 
 <p align="center">
