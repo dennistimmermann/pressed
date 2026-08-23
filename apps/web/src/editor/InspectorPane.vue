@@ -3,7 +3,7 @@
   kind chip, name, locator — then the sections, with the same header pattern as Layers.
 
     element  PROPS (snippet scopes only) · ATTRIBUTES · LOGIC · STYLE
-    rule     SELECTOR · USED BY · STYLE, and `Delete rule…` in the pane footer
+    rule     SELECTOR · USED BY · STYLE, then `Delete rule` as the last row of the scroller
     script   PROPS only (E8)
 
   Label-agnostic and stateless: rows are ranges in the source, every codeless action leaves as
@@ -14,7 +14,7 @@ import { computed, ref } from 'vue'
 import Msgs from './Msgs.vue'
 import PropertyEditor from './PropertyEditor.vue'
 import StylePane from './StylePane.vue'
-import { PaneSection, anchorMenu } from '@/ui'
+import { AddRow, EmptyState, Menu, type MenuItem, PaneSection } from '@/ui'
 import { aria, hasError, level } from './inspector/markers'
 import { setDeclarations, type Declaration, type Rule, type StyleTarget } from './css'
 import { DIRECTIVE_FIELDS } from './ast'
@@ -166,9 +166,8 @@ const gridMarkers = computed(() =>
   props.kind === 'rule' ? ruleMarkers.value.filter((m) => !selectorMarkers.value.includes(m)) : ruleMarkers.value,
 )
 
-/** The column is narrow and clips its overflow, so the menu is placed in fixed space. */
-const classMenu = ref(false)
-const menuPos = ref<Record<string, string>>({})
+/** The `+ class` menu — `ui/Menu`, so it is anchored and teleported like everything else. */
+const classAnchor = ref<DOMRect | null>(null)
 const newClass = ref('')
 /** The `+` menu: classes that exist but are not on this element, then the missing tag / `*` rules. */
 const otherClasses = computed(() => {
@@ -181,22 +180,41 @@ const otherTargets = computed(() => {
 })
 
 function openClassMenu(event: MouseEvent) {
-  menuPos.value = anchorMenu((event.currentTarget as HTMLElement).getBoundingClientRect(), 240)
-  classMenu.value = !classMenu.value
+  classAnchor.value = classAnchor.value ? null : (event.currentTarget as HTMLElement).getBoundingClientRect()
+}
+
+/** Classes that exist but are not on this element, then the tag / `*` rules that do not exist
+    yet — the second kind *creates* a rule, so its hint says what it would match. */
+const classItems = computed<MenuItem[]>(() => [
+  ...otherClasses.value.map((c) => ({
+    value: `.${c.name}`, label: `.${c.name}`, mono: true,
+    hint: `${c.declarations}${scopeName.value ? (c.origin === null ? ` · ${props.rootName}` : ' · snippet') : ''}`,
+  })),
+  ...otherTargets.value.map((sel) => ({
+    value: sel, label: sel, mono: true, hint: sel === '*' ? 'every element' : `every ${sel}`,
+  })),
+])
+const scopeName = computed(() => props.scopeName)
+
+/** A `.name` row adds the class; a `tag` / `*` row ensures the selector. */
+function pickClassItem(value: string) {
+  const c = otherClasses.value.find((x) => `.${x.name}` === value)
+  if (c) return addClass(c.name, c.origin ?? null)
+  pickSelector(value)
 }
 
 // The rule is created in the active scope's own block; `origin` only says which pill to select
 // afterwards — an existing class keeps the block it already lives in.
 function addClass(raw: string, origin: string | null = props.scopeName ?? null) {
   const cls = raw.trim().replace(/^\./, '')
-  classMenu.value = false
+  classAnchor.value = null
   newClass.value = ''
   if (!cls) return
   picked.value = pillKey({ selector: `.${cls}`, origin })
   emit('add-class', cls)
 }
 function pickSelector(selector: string) {
-  classMenu.value = false
+  classAnchor.value = null
   picked.value = pillKey({ selector, origin: props.scopeName ?? null })
   emit('ensure-selector', selector)
 }
@@ -274,7 +292,7 @@ const attrMarkers = computed(() => (props.markers ?? []).filter((m) => !logicMar
       <span v-if="name" class="loc">{{ locator }}</span>
     </header>
 
-    <p v-if="!name" class="empty">{{ emptyHint }}</p>
+    <EmptyState v-if="!name" :text="emptyHint" />
 
     <div v-else class="flex min-h-0 flex-1 flex-col overflow-y-auto">
       <!-- ------------------------------------------------------ PROPS / SELECTOR -->
@@ -387,38 +405,25 @@ const attrMarkers = computed(() => (props.markers ?? []).filter((m) => !logicMar
               <span v-if="foreign(t)" class="from">{{ rootName }}</span>
               <span v-if="t.kind === 'class'" class="x" title="take this class off the element" @click.stop="emit('detach', t.selector.slice(1))">✕</span>
             </button>
-            <span class="add-wrap">
-              <button type="button" class="pill dashed" title="add a class to this element" @click="openClassMenu">+</button>
-              <template v-if="classMenu">
-                <span class="backdrop" @click="classMenu = false" />
-                <div class="menu" :style="menuPos">
-                  <!-- The rule already exists: nothing is created, the row only says where it lives. -->
-                  <button v-for="c in otherClasses" :key="c.name" type="button" class="item" @click="addClass(c.name, c.origin ?? null)">
-                    <span class="flex-1 text-left">.{{ c.name }}</span>
-                    <span class="hint">{{ c.declarations }}{{ scopeName ? (c.origin === null ? ` · ${rootName}` : ' · snippet') : '' }}</span>
-                  </button>
-                  <!-- These *create* a rule — always in the block of the scope you are editing. -->
-                  <button v-for="sel in otherTargets" :key="sel" type="button" class="item" @click="pickSelector(sel)">
-                    <span class="flex-1 text-left">{{ sel }}</span>
-                    <span class="hint">{{ sel === '*' ? 'every element' : `every ${sel}` }}</span>
-                  </button>
-                  <input :ref="autofocus" v-model="newClass" placeholder="new class…" aria-label="new class" @change="addClass(newClass)" @keydown.esc="classMenu = false">
-                </div>
-              </template>
-            </span>
+            <!-- The one add grammar: a dashed `+ noun`, never a bare `+` (F18). -->
+            <AddRow noun="class" inline title="add a class to this element" @click="openClassMenu" />
+            <Menu :anchor="classAnchor" :items="classItems" :width="240" @pick="pickClassItem" @close="classAnchor = null">
+              <input :ref="autofocus" v-model="newClass" class="new" placeholder="new class…" aria-label="new class" @change="addClass(newClass)" @keydown.esc="classAnchor = null">
+            </Menu>
           </div>
-          <p v-if="kind === 'element' && !targets?.length" class="none">no class on this element yet — add one with +</p>
 
           <StylePane :key="styleKey" :rule="activeRule" :markers="gridMarkers" :inherited="inherited" @set="onSet" @rename-prop="renameProp" />
         </PaneSection>
       </template>
-    </div>
 
-    <!-- Delete lives at the foot of the pane and says what it costs. No confirm: one edit, ⌘Z undoes. -->
-    <footer v-if="kind === 'rule' && rule" class="foot">
-      <button type="button" class="danger" @click="emit('delete-rule')">Delete rule</button>
-      <span class="meta">also strips {{ rule.selector }} from {{ usedBy?.length ?? 0 }} elements</span>
-    </footer>
+      <!-- Delete is the last row of the pane's content, under its own separator — in the flow,
+           so it never sits over the STYLE grid it was pinned across (atlas 26). It says what it
+           costs; no confirm, because it is one edit and ⌘Z undoes it. -->
+      <footer v-if="kind === 'rule' && rule" class="foot">
+        <button type="button" class="danger" @click="emit('delete-rule')">Delete rule</button>
+        <span class="meta">also strips {{ rule.selector }} from {{ usedBy?.length ?? 0 }} elements</span>
+      </footer>
+    </div>
   </div>
 </template>
 
@@ -436,7 +441,6 @@ const attrMarkers = computed(() => (props.markers ?? []).filter((m) => !logicMar
 .name.accent { color: var(--accent-link); }
 .cls { font-family: var(--font-mono); font-size: 12px; font-weight: 500; color: var(--accent-link); }
 .loc { font-family: var(--font-mono); font-size: 10px; font-weight: 450; color: var(--meta-foreground); }
-.empty { padding: 12px; margin: 0; font-size: 11px; color: var(--muted-foreground); }
 
 /* The sections are `@/ui` PaneSections; what stays here is what goes *in* a header. */
 .meta { font-family: var(--font-mono); font-size: 10px; font-weight: 450; color: var(--meta-foreground); }
@@ -470,9 +474,9 @@ const attrMarkers = computed(() => (props.markers ?? []).filter((m) => !logicMar
   transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
 }
 .pill:hover { background: var(--field); }
-.pill.on { border-color: var(--primary); background: var(--accent); font-weight: 600; color: var(--accent-foreground); }
+/* THE selection recipe: --accent wash + 1px inset ring (F14). */
+.pill.on { border-color: transparent; background: var(--accent); box-shadow: inset 0 0 0 1px var(--primary); font-weight: 600; color: var(--accent-foreground); }
 .pill.faint { opacity: 0.6; }
-.pill.dashed { border-style: dashed; border-color: var(--dashed); color: var(--accent-link); }
 /* Where the rule lives, when that is not the scope you are in. */
 .pill .from { font-size: 9px; font-weight: 450; color: var(--meta-foreground); }
 .pill.on .from { color: inherit; }
@@ -490,30 +494,17 @@ const attrMarkers = computed(() => (props.markers ?? []).filter((m) => !logicMar
 .more { align-self: flex-start; border: 0; background: transparent; padding: 0; font-family: var(--font-sans); font-size: 10.5px; font-weight: 500; color: var(--accent-link); }
 .more:hover { text-decoration: underline; }
 
-/* ---- the `+` menu (SPEC §4.8) ---- */
-.add-wrap { position: relative; }
-.backdrop { position: fixed; inset: 0; z-index: 19; }
-.menu {
-  position: fixed; z-index: 60; width: 240px; padding: 6px;
-  border: 1px solid var(--field-border); border-radius: var(--radius-trough); background: var(--popover);
-  box-shadow: var(--shadow-popover);
-}
-.menu .item {
-  display: flex; align-items: center; gap: 8px; width: 100%; height: 26px; padding: 0 9px;
-  border: 0; border-radius: var(--radius-control); background: transparent;
-  font-family: var(--font-mono); font-size: 11px; color: var(--popover-foreground);
-}
-.menu .item:hover { background: var(--accent); }
-.menu .hint { font-size: 10px; color: var(--meta-foreground); }
-.menu input {
+/* The one input that rides inside a Menu (the `new class…` name). */
+.new {
   width: 100%; height: 26px; margin-top: 4px; padding: 0 9px; border: 1px solid transparent;
-  border-radius: var(--radius-control); background: var(--field); font-family: var(--font-mono); font-size: 11px; outline: none;
+  border-radius: var(--radius-control); background: var(--field);
+  font-family: var(--font-mono); font-size: var(--t3); outline: none;
 }
-.menu input:focus-visible { border-color: var(--primary); background: var(--pane); }
+.new:focus-visible { border-color: var(--primary); background: var(--pane); }
 
-/* ---- footer: destructive text, no confirm ---- */
+/* ---- the delete row: in the flow, its own separator, destructive text, no confirm ---- */
 .foot {
-  display: flex; align-items: center; gap: 8px; flex: none; padding: 10px 12px;
+  display: flex; align-items: center; gap: 8px; flex: none; margin-top: 4px; padding: 10px 12px 14px;
   border-top: 1px solid var(--section-border); font-size: 11px; line-height: 1.35;
 }
 .foot .danger { border: 0; background: transparent; padding: 0; font-size: 11px; font-weight: 500; color: var(--destructive); }

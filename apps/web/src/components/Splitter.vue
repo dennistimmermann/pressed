@@ -18,12 +18,15 @@ const props = withDefaults(
     dir?: 'x' | 'y'
     /** True when the pane sits *after* the handle, so dragging back grows it. */
     invert?: boolean
+    /** The pane can become a rail: dragging past the minimum emits `collapse` instead of a
+        width. Without it the drag simply stops at `min` — a pane is never sized to 0 (F10). */
+    collapsible?: boolean
   }>(),
-  { dir: 'x', invert: false, max: Infinity },
+  { dir: 'x', invert: false, max: Infinity, collapsible: false },
 )
-const emit = defineEmits<{ 'update:size': [px: number] }>()
+const emit = defineEmits<{ 'update:size': [px: number]; collapse: [] }>()
 
-const COLLAPSE = 40 // px past the minimum before the pane snaps shut
+const COLLAPSE = 40 // px past the minimum before the pane snaps to its rail
 
 function onPointerDown(e: PointerEvent) {
   const handle = e.currentTarget as HTMLElement
@@ -34,7 +37,8 @@ function onPointerDown(e: PointerEvent) {
 
   const move = (ev: PointerEvent) => {
     const want = from + (axis(ev) - start) * (props.invert ? -1 : 1)
-    emit('update:size', want < props.min - COLLAPSE ? 0 : Math.round(Math.min(props.max, Math.max(props.min, want))))
+    if (props.collapsible && want < props.min - COLLAPSE) return emit('collapse')
+    emit('update:size', Math.round(Math.min(props.max, Math.max(props.min, want))))
   }
   const up = () => {
     handle.removeEventListener('pointermove', move)

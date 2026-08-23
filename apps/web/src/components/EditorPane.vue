@@ -7,8 +7,8 @@
 -->
 <script setup lang="ts">
 import { computed } from 'vue'
-import { isWarning } from '@sprint/core'
-import { librarySources } from '@sprint/core/library/index.ts'
+import { isWarning } from '@pressed/core'
+import { librarySources } from '@pressed/core/library/index.ts'
 import { BlockTabs, SfcEditor } from '@/editor'
 import type { EditorHandle } from '@/editor/editor-handle.ts'
 import type { BlockKind } from '@/editor/tabs.ts'
@@ -33,7 +33,7 @@ const EMPTY: Record<BlockKind, { title: string; body: string }> = {
   },
   script: {
     title: 'Nothing here yet',
-    body: 'TypeScript that runs once per row before the label renders: compute here what the template should not have to, e.g. `const grams = Math.round(row.remaining_weight)`. It runs in the sandboxed runtime frame, so no timers and no fetching.',
+    body: 'TypeScript that runs once per row before the label renders: compute here what the template should not have to, e.g. `const grams = Math.round(row.remaining_weight)`. It runs once, sealed off from the outside — no timers, no network.',
   },
 }
 const emptyText = computed(() => (activeBlock.value?.empty && settings.editorView === 'block' ? EMPTY[kind.value] : null))

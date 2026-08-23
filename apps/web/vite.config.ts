@@ -11,9 +11,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(dir, './src'),
-      // Templates and the built-in library import from 'sprint'; the runtime frame provides
+      // Templates and the built-in library import from 'pressed'; the runtime frame provides
       // the same module at runtime. One file, both worlds.
-      sprint: path.resolve(dir, '../../packages/core/src/template/sprint-module.ts'),
+      pressed: path.resolve(dir, '../../packages/core/src/template/pressed-module.ts'),
     },
   },
   // The runtime frame is `sandbox="allow-scripts"` without `allow-same-origin`, so its

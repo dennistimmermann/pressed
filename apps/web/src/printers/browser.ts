@@ -1,4 +1,4 @@
-import { labelDocument, sheetDocument } from '@sprint/core/template/label.ts'
+import { labelDocument, sheetDocument } from '@pressed/core/template/label.ts'
 import type { Printer } from './types'
 
 /** Chrome print dialog: a grid on cut sheets, or one label per page when the roll is chosen. */

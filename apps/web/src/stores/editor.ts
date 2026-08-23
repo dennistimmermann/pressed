@@ -1,6 +1,6 @@
 import { computed, nextTick, reactive, ref, shallowRef, toRaw, watch } from 'vue'
-import { parseMeta } from '@sprint/core/template/meta.ts'
-import { labelDocument } from '@sprint/core/template/label.ts'
+import { parseMeta } from '@pressed/core/template/meta.ts'
+import { labelDocument } from '@pressed/core/template/label.ts'
 import { debounce, RenderSuperseded } from '@/editor/runtime-client.ts'
 import {
   attributeEdit, countMatching, deleteElement, duplicateElement, elementAt, elementTree,
@@ -13,10 +13,10 @@ import { buildTree, type VarNode } from '@/editor/inspector/row-tree.ts'
 import type { BlockKind, TabRef } from '@/editor/tabs.ts'
 import type { Edit, ElementInfo, LayerNode, Loc, StructureEdit } from '@/editor/ast.ts'
 import type { EditorHandle } from '@/editor/editor-handle.ts'
-import { getPath, isWarning, LIBRARY_NAMES, rowPathsUsed } from '@sprint/core'
-import type { Assets, ComponentSchema, Message, Meta, RenderedLabel } from '@sprint/core'
+import { getPath, isWarning, LIBRARY_NAMES, rowPathsUsed } from '@pressed/core'
+import type { Assets, ComponentSchema, Message, Meta, RenderedLabel } from '@pressed/core'
 import { runtime } from '@/render/runtime-client'
-import { data, mappedPreviewRow, mappedRowType } from './data'
+import { data, mappedPreviewRow, mappedRowType, mapping, sourceFields } from './data'
 import { settings } from './settings'
 import {
   bundled, download, findTemplate, isBundled, newTemplate, refreshTemplates, saveTemplate,
@@ -91,6 +91,30 @@ export const mappedState = computed<Record<string, boolean | null>>(() =>
   ])),
 )
 
+/**
+ * What actually feeds each template variable: the user's explicit mappings, plus the source
+ * field of the very same name for every needed path that is satisfied without one. A source
+ * whose names already fit needs no mapping — but it *is* wired, and F5 is what happens when
+ * only one of the two Data tabs knows that: `3 / 3 wired` over a single drawn wire (atlas 05).
+ * Both the count and the picture read this.
+ */
+export const effectiveMapping = computed<Record<string, string>>(() => {
+  const out = { ...mapping.value }
+  const fields = new Set(sourceFields.value.map((f) => f.path))
+  const taken = new Set(Object.values(out))
+  for (const path of neededPaths.value) {
+    const target = path.slice('row.'.length)
+    if (!taken.has(target) && fields.has(target)) out[target] = target
+  }
+  return out
+})
+
+/** Which needed paths something is wired to — one number, used by every badge in the view. */
+export const wiredPaths = computed(() => {
+  const targets = new Set(Object.values(effectiveMapping.value))
+  return neededPaths.value.filter((p) => targets.has(p.slice('row.'.length)))
+})
+
 // ---------------------------------------------------------------- templates
 
 export async function initEditor() {
@@ -114,6 +138,11 @@ export function load(id: string) {
   editor.activeTab = remembered && blockOf(tabsModel(record.source), remembered) ? { ...remembered } : { scope: null, kind: 'template' }
   editor.caretByTab = {}
   settings.lastTemplateId = id
+  // A different label is a different fit: zoom never carries across labels of different size
+  // (F21, atlas 35). Here rather than in the canvas, because the template can be switched from
+  // the Data view — with the Editor unmounted, there is no canvas to notice.
+  settings.zoomCanvas = 'fit'
+  settings.zoomPreview = 'fit'
   render()
 }
 

@@ -9,7 +9,11 @@ defineProps<{ caption: string }>()
 
 <template>
   <div class="relative flex min-h-0 flex-1 flex-col items-center overflow-hidden bg-[var(--canvas)]">
-    <p class="absolute top-[10px] left-[14px] font-mono text-[10px] text-[var(--meta-foreground)]">{{ caption }}</p>
+    <div class="absolute top-[8px] left-[14px] z-1 flex items-center gap-2">
+      <p class="font-mono text-[var(--t6)] text-[var(--meta-foreground)]">{{ caption }}</p>
+      <!-- What the drawing is *not* showing — `no data`, say. A status chip, never a control. -->
+      <slot name="tag" />
+    </div>
     <slot />
   </div>
 </template>

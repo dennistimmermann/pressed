@@ -1,4 +1,4 @@
-import { subset } from '@sprint/core'
+import { subset } from '@pressed/core'
 
 /**
  * The handful of HTML attributes worth offering in the property editor when the caret sits on

@@ -1,6 +1,6 @@
 import { reactive, toRaw } from 'vue'
-import { parseMeta } from '@sprint/core/template/meta.ts'
-import type { Assets } from '@sprint/core'
+import { parseMeta } from '@pressed/core/template/meta.ts'
+import type { Assets } from '@pressed/core'
 
 export type TemplateRecord = { id: string; source: string; assets: Assets; updatedAt: number }
 
@@ -8,7 +8,7 @@ export type TemplateRecord = { id: string; source: string; assets: Assets; updat
  * Templates live in IndexedDB, not localStorage: a bundled font blows the ~5 MB quota
  * immediately (design §6). ~40 lines of native API is cheaper than a wrapper library.
  */
-const DB = 'sprint'
+const DB = 'pressed'
 const STORE = 'templates'
 
 let db: Promise<IDBDatabase> | null = null

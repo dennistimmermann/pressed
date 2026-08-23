@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from 'vitest'
-import subset from '@sprint/core/subset.json'
+import subset from '@pressed/core/subset.json'
 
 /**
  * The STYLE grid may only offer what the render subset allows — a control that writes a

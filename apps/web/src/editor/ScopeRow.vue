@@ -1,10 +1,12 @@
 <!--
-  The 42px scope row (SPEC §4.1 "Scope trough"): one trough holding the file tab, a hairline +
-  `SNIPPETS` eyebrow, one tab per snippet and `+`. The scope actions live at its right and only
-  exist while a snippet scope is active. The file tab is the way out of a scope.
+  The 42px scope row (SPEC §4.1 "Scope trough"): one trough holding the file tab and — only once
+  the file has any — a hairline, the `SNIPPETS` eyebrow and one tab per snippet, then the dashed
+  `+ snippet`. The scope actions live at its right and only exist while a snippet scope is
+  active. The file tab is the way out of a scope.
 -->
 <script setup lang="ts">
 import { nextTick, ref, useTemplateRef } from 'vue'
+import { AddRow } from '@/ui'
 import { tabKey, type Badge, type TabsModel } from './tabs'
 
 const props = withDefaults(
@@ -78,8 +80,12 @@ function commitRename() {
         <span v-if="badgeOf(null)" class="badge" :class="badgeOf(null)!.level">● {{ badgeOf(null)!.count }}</span>
       </button>
 
-      <span class="hairline" aria-hidden="true" />
-      <span class="eyebrow">Snippets</span>
+      <!-- F11: a file with no snippets has no SNIPPETS tab group — a contentless tab does not
+           render, and adding one is the dashed `+ snippet` beside the trough (atlas 14). -->
+      <template v-if="model.snippets.length">
+        <span class="hairline" aria-hidden="true" />
+        <span class="eyebrow">Snippets</span>
+      </template>
 
       <template v-for="s in model.snippets" :key="s.name">
         <input
@@ -101,8 +107,10 @@ function commitRename() {
         </button>
       </template>
 
-      <button type="button" class="tab plus" aria-label="Add snippet" @click="emit('add')">+</button>
     </div>
+
+    <!-- The one add grammar: a dashed `+ noun`, never a bare `+` (F18). -->
+    <AddRow noun="snippet" inline title="add a snippet to this file" @click="emit('add')" />
 
     <span class="grow" />
 
@@ -186,18 +194,6 @@ function commitRename() {
 /* An active snippet says "you are inside something": accent text (SPEC §4.1). */
 .tab.on:not(.file) .label {
   color: var(--accent-foreground);
-}
-.tab.plus {
-  width: 24px;
-  padding: 0;
-  justify-content: center;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12px;
-  color: var(--scope-muted-2);
-}
-.tab.plus:hover {
-  background: var(--pane);
-  color: var(--foreground);
 }
 .dot {
   width: 5px;

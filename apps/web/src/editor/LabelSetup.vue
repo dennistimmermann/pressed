@@ -33,16 +33,16 @@ const num = (event: Event) => {
 
     <div class="row">
       <label class="field">
-        <span class="key">width mm</span>
+        <span class="key">width<i class="u">mm</i></span>
         <input type="number" step="0.1" :value="meta.size.width" @change="emit('update', { size: { ...meta.size, width: num($event) ?? 0 } })" />
       </label>
       <label class="field">
-        <span class="key">height mm</span>
+        <span class="key">height<i class="u">mm</i></span>
         <input type="number" step="0.1" :value="meta.size.height" @change="emit('update', { size: { ...meta.size, height: num($event) ?? 0 } })" />
       </label>
       <label class="field">
-        <span class="key">margin mm</span>
-        <input type="number" step="0.1" :value="meta.margin ?? ''" @change="emit('update', { margin: num($event) })" />
+        <span class="key">margin<i class="u">mm</i></span>
+        <input type="number" step="0.1" placeholder="0" :value="meta.margin ?? ''" @change="emit('update', { margin: num($event) })" />
       </label>
     </div>
 
@@ -51,12 +51,11 @@ const num = (event: Event) => {
       <textarea
         :value="meta.description ?? ''"
         class="sans"
-        placeholder="What this label is for — shown in Templates…"
+        placeholder="what this label is for"
         @change="emit('update', { description: text($event) || undefined })"
       />
     </label>
 
-    <div class="foot">writes &lt;meta&gt;</div>
   </div>
 </template>
 
@@ -101,11 +100,23 @@ const num = (event: Event) => {
   flex-direction: column;
   gap: 4px;
 }
+/* One convention for every field: the word in sans, its unit faint and mono on the right —
+   a measurement is never set in sans (invariant 2, F23). */
 .key {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   font-family: var(--font-sans, system-ui, sans-serif);
   font-size: 10.5px;
   font-weight: 500;
   color: var(--muted-foreground-2);
+}
+.key .u {
+  margin-left: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-style: normal;
+  color: var(--faint-foreground);
 }
 input,
 textarea {
@@ -124,11 +135,20 @@ input.sans,
 textarea.sans {
   font-family: var(--font-sans, system-ui, sans-serif);
 }
+/* Chrome-first: the box is as tall as what is in it, one line to start. */
 textarea {
-  height: 44px;
+  height: auto;
+  min-height: 29px;
+  field-sizing: content;
   padding: 7px 9px;
   line-height: 1.4;
   resize: none;
+}
+
+/* Placeholders are always faint grey, never a live-looking value (F26). */
+input::placeholder,
+textarea::placeholder {
+  color: var(--faint-foreground);
 }
 
 input:focus-visible,
@@ -136,11 +156,5 @@ textarea:focus-visible {
   outline: none;
   border-color: var(--primary);
   background: var(--pane);
-}
-
-.foot {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
-  color: var(--meta-foreground);
 }
 </style>

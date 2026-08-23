@@ -128,7 +128,13 @@ function pickStyle(which: string) {
 }
 
 // ---- conditional rows -----------------------------------------------------
-const isFlex = computed(() => ['flex', 'grid', 'inline-flex'].includes(eff('display') ?? ''))
+/**
+ * LAYOUT is one shape in element mode and in rule mode (F: atlas 22 vs 26). When nothing has
+ * said otherwise — an unused rule has no element to read a computed style off — the answer is
+ * the base stylesheet's: `:where(div){display:flex}` under every label. So `undefined` reads as
+ * flex, and the direction / justify / align / wrap row is there in both modes.
+ */
+const isFlex = computed(() => ['flex', 'grid', 'inline-flex'].includes(eff('display') ?? 'flex'))
 const positioned = computed(() => (get('position') ?? 'static') !== 'static')
 
 // ---- the four-sides widgets (padding · margin · radius) -------------------

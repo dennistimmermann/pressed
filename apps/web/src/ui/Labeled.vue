@@ -28,7 +28,7 @@ defineProps<{
 .hdr { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .k {
   flex: 1; min-width: 0;
-  font-family: var(--font-sans); font-size: 9px; font-weight: 450; color: var(--muted-foreground-2);
+  font-family: var(--font-sans); font-size: var(--t2); font-weight: 450; color: var(--muted-foreground-2);
 }
 .cells { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; min-width: 0; }
 </style>

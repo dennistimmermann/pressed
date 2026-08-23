@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { parseMeta } from '@sprint/core/template/meta.ts'
+import { parseMeta } from '@pressed/core/template/meta.ts'
 import { withMetaName } from './templates'
 
 // Rename rewrites the file, because <meta> is the source of truth for the name (spec §4.1).

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { code128bBars } from 'sprint'
+import { code128bBars } from 'pressed'
 
 const props = withDefaults(defineProps<{
   /** Text encoded in the barcode (printable ASCII). */

@@ -31,10 +31,10 @@ for (const [path, load] of Object.entries(raw)) {
   files.set(path.slice(path.indexOf('/node_modules/')), load)
 }
 
-// `sprint` has no package on disk — the module's *contents* are generated per context type
+// `pressed` has no package on disk — the module's *contents* are generated per context type
 // and registered as a Monaco model; only this stub is needed to make it resolve.
-const sprintPkg = JSON.stringify({ name: 'sprint', version: '0.0.0', types: 'index.d.ts' })
-files.set('/node_modules/sprint/package.json', () => Promise.resolve(sprintPkg))
+const sprintPkg = JSON.stringify({ name: 'pressed', version: '0.0.0', types: 'index.d.ts' })
+files.set('/node_modules/pressed/package.json', () => Promise.resolve(sprintPkg))
 
 const dirs = new Set<string>()
 for (const path of files.keys()) {

@@ -6,8 +6,9 @@ import { attributeEdit, cursorContext, elementAt, insertAt, insertVar, type Curs
 import { insertItems, type InsertItem } from './inspector/insert'
 import type { ComponentSchema } from './types'
 import { getOrCreateModel, startLanguageService } from './monaco/env'
-import { componentUri, ENV_URI, SPRINT_MODULE_URI, sprintEnv } from './monaco/sprint-env'
+import { componentUri, ENV_URI, SPRINT_MODULE_URI, pressedEnv } from './monaco/pressed-env'
 import { snippetSfc, snippetUri, SNIPPET_DIR, SNIPPET_NAME, toFileOffset, type SnippetSfc } from './monaco/snippets'
+import { AddRow } from '@/ui'
 import { defineSprintTheme } from './monaco/theme'
 import { tabsModel } from './tabs'
 
@@ -76,7 +77,7 @@ let snippets: SnippetSfc[] = []
 /** Set up in `onMounted` — a debounced re-run of the snippet diagnostics. */
 let scheduleSnippets = () => {}
 
-/** Regenerate the virtual environment: context type, `sprint` module, library and snippet sources. */
+/** Regenerate the virtual environment: context type, `pressed` module, library and snippet sources. */
 function syncEnvModels() {
   const source = instance.value?.getModel()?.getValue() ?? props.modelValue
   snippets = tabsModel(source).snippets.filter((s) => SNIPPET_NAME.test(s.name)).map((s) => snippetSfc(source, s))
@@ -86,7 +87,7 @@ function syncEnvModels() {
   for (const m of monacoEditor.getModels())
     if (m.uri.toString().startsWith(SNIPPET_DIR) && !live.has(m.uri.toString())) m.dispose()
 
-  for (const [uri, text] of Object.entries(sprintEnv(props.contextType, Object.keys(props.libraryComponents), snippets.map((s) => s.name)))) {
+  for (const [uri, text] of Object.entries(pressedEnv(props.contextType, Object.keys(props.libraryComponents), snippets.map((s) => s.name)))) {
     getOrCreateModel(Uri.parse(uri), 'typescript', text)
   }
   for (const [name, source] of Object.entries(props.libraryComponents)) {
@@ -112,7 +113,7 @@ function applyVisible() {
     if (v.first > 1) ranges.push(new Range(1, 1, v.first - 1, 1))
     if (v.last < model.getLineCount()) ranges.push(new Range(v.last + 1, 1, model.getLineCount(), 1))
   }
-  ;(ed as unknown as { setHiddenAreas(r: IRange[], source?: unknown): void }).setHiddenAreas(ranges, 'sprint')
+  ;(ed as unknown as { setHiddenAreas(r: IRange[], source?: unknown): void }).setHiddenAreas(ranges, 'pressed')
   // A caret in a hidden line would edit text the user cannot see: keep it inside the block.
   const pos = ed.getPosition()
   if (v && pos && (pos.lineNumber < v.first || pos.lineNumber > v.last)) {
@@ -216,7 +217,7 @@ function openPopup(mode: Mode) {
   popup.value = { top: vis.top + vis.height + 4, left: vis.left, from: ed.getModel()!.getOffsetAt(pos), mode, context: spot.context }
   query.value = ''
   cursor.value = firstPickable()
-  void nextTick(() => container.value?.querySelector<HTMLInputElement>('.sprint-insert input')?.focus())
+  void nextTick(() => container.value?.querySelector<HTMLInputElement>('.pressed-insert input')?.focus())
 }
 function closePopup(refocus = true) {
   popup.value = null
@@ -394,16 +395,11 @@ onMounted(() => {
   disposables.push(ed.onDidChangeModel(applyVisible))
   watch(() => props.visible, applyVisible, { deep: true })
 
-  // The theme lives on <html>; rebuild it from the tokens when the class flips.
-  const observer = new MutationObserver(() => monacoEditor.setTheme(defineSprintTheme()))
-  observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
-  disposables.push({ dispose: () => observer.disconnect() })
-
   // Wavy underlines for what the compiler found. Our own owner, so Volar's markers stay put.
   const applyMarkers = () => {
     const m = ed.getModel()
     if (!m) return
-    monacoEditor.setModelMarkers(m, 'sprint', props.markers.map((k) => {
+    monacoEditor.setModelMarkers(m, 'pressed', props.markers.map((k) => {
       const a = m.getPositionAt(k.start), b = m.getPositionAt(k.end)
       return {
         message: k.message,
@@ -502,7 +498,7 @@ const handle: EditorHandle = {
     // stop Monaco folds the insert into whatever was typed just before it.
     ed.pushUndoStop()
     ed.executeEdits(
-      'sprint',
+      'pressed',
       edits.map((e) => ({
         range: Range.fromPositions(model.getPositionAt(e.start), model.getPositionAt(e.end)),
         text: e.text,
@@ -515,7 +511,7 @@ const handle: EditorHandle = {
     caretListeners.add(cb)
     return () => caretListeners.delete(cb)
   },
-  // Monaco holds both marker sets on the one model (ours as owner `sprint`, the language
+  // Monaco holds both marker sets on the one model (ours as owner `pressed`, the language
   // service's as `vue`); back to offsets so callers stay Monaco-free.
   markersIn(range) {
     const model = instance.value?.getModel()
@@ -542,10 +538,10 @@ defineExpose(handle)
 </script>
 
 <template>
-  <div ref="container" class="sprint-editor">
+  <div ref="container" class="pressed-editor">
     <!-- An empty block gets a centred sentence instead of a bare cursor (README-tabs §7).
          Never captures clicks: typing is what dismisses it. -->
-    <div v-if="showEmpty" class="sprint-empty">
+    <div v-if="showEmpty" class="pressed-empty">
       <p class="title">{{ emptyText!.title }}</p>
       <p class="body">
         <span v-for="(part, i) in emptyBody" :key="i" :class="{ mono: part.mono, klass: part.klass }">{{ part.text }}</span>
@@ -553,12 +549,13 @@ defineExpose(handle)
     </div>
 
     <!-- `+ component` / `+ variable` right of the caret, whichever fit here; the popup hangs under them. -->
-    <div v-if="plus && !popup" class="sprint-plus" :style="{ top: `${plus.top}px`, left: `${plus.left}px` }">
-      <button
-        v-for="mode in plus.modes" :key="mode" type="button" @mousedown.prevent @click="openPopup(mode)"
-      >+ {{ mode === 'components' ? 'component' : 'variable' }}</button>
+    <div v-if="plus && !popup" class="pressed-plus" :style="{ top: `${plus.top}px`, left: `${plus.left}px` }">
+      <AddRow
+        v-for="mode in plus.modes" :key="mode" inline :noun="mode === 'components' ? 'component' : 'variable'"
+        @mousedown.prevent @click="openPopup(mode)"
+      />
     </div>
-    <div v-if="popup" class="sprint-insert" :style="{ top: `${popup.top}px`, left: `${popup.left}px` }" @keydown="onPopupKey">
+    <div v-if="popup" class="pressed-insert" :style="{ top: `${popup.top}px`, left: `${popup.left}px` }" @keydown="onPopupKey">
       <input
         v-model="query" :placeholder="popup.mode === 'variables' ? 'variable…' : 'component or element…'"
         aria-label="filter" @input="cursor = firstPickable()"
@@ -583,14 +580,14 @@ defineExpose(handle)
 </template>
 
 <style>
-.sprint-editor {
+.pressed-editor {
   position: relative;
   height: 100%;
   width: 100%;
   overflow: hidden;
 }
 
-.sprint-editor .sprint-empty {
+.pressed-editor .pressed-empty {
   position: absolute;
   inset: 0;
   z-index: 2;
@@ -603,58 +600,43 @@ defineExpose(handle)
   text-align: center;
   pointer-events: none;
 }
-.sprint-editor .sprint-empty p {
+.pressed-editor .pressed-empty p {
   margin: 0;
   font-family: var(--font-sans, system-ui, sans-serif);
 }
-.sprint-editor .sprint-empty .title {
+.pressed-editor .pressed-empty .title {
   font-size: 12.5px;
   font-weight: 600;
   line-height: 1.3;
 }
-.sprint-editor .sprint-empty .body {
+.pressed-editor .pressed-empty .body {
   max-width: 44ch;
   font-size: 11.5px;
   line-height: 1.5;
   color: var(--muted-foreground);
   text-wrap: pretty;
 }
-.sprint-editor .sprint-empty .mono {
+.pressed-editor .pressed-empty .mono {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11px;
 }
-.sprint-editor .sprint-empty .klass {
+.pressed-editor .pressed-empty .klass {
   color: var(--accent-link);
 }
 
-/* The one dashed control that floats: `+ component` / `+ variable`, right of the caret's line. */
-.sprint-editor .sprint-plus {
+/* `ui/AddRow` — the one add grammar — following the caret. A code line is 18px, so the
+   control height is overridden here and nowhere else; AddRow reads it as a token. */
+.pressed-editor .pressed-plus {
   position: absolute;
   z-index: 5;
   display: flex;
   gap: 4px;
   margin: 1px 0 0 10px; /* right of the caret */
-}
-.sprint-editor .sprint-plus button {
-  height: 18px;
-  padding: 0 6px;
-  border: 1px dashed var(--dashed);
-  border-radius: var(--radius-control);
-  background: var(--pane);
-  color: var(--accent-link);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  line-height: 1;
-  white-space: nowrap;
-  transition: background-color 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
-}
-.sprint-editor .sprint-plus button:hover {
-  border-color: var(--primary);
-  background: var(--accent);
+  --h-control: 18px;
 }
 
 /* The popup: the same popover as Layers' `+ Insert element` (SPEC §4.8), anchored to the caret. */
-.sprint-editor .sprint-insert {
+.pressed-editor .pressed-insert {
   position: absolute;
   z-index: 60; /* above Monaco's own overlays (the suggest widget is 40) */
   width: 300px;
@@ -664,36 +646,36 @@ defineExpose(handle)
   background: var(--popover);
   box-shadow: var(--shadow-popover);
 }
-.sprint-editor .sprint-insert input {
+.pressed-editor .pressed-insert input {
   width: 100%; height: 28px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--radius-control);
   background: var(--field); font-size: 12px; color: var(--foreground); outline: none;
 }
-.sprint-editor .sprint-insert input:focus-visible { border-color: var(--primary); background: var(--pane); }
-.sprint-editor .sprint-insert ul { max-height: 260px; margin: 6px 0 0; padding: 0; overflow: auto; list-style: none; }
-.sprint-editor .sprint-insert li {
+.pressed-editor .pressed-insert input:focus-visible { border-color: var(--primary); background: var(--pane); }
+.pressed-editor .pressed-insert ul { max-height: 260px; margin: 6px 0 0; padding: 0; overflow: auto; list-style: none; }
+.pressed-editor .pressed-insert li {
   display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 6px;
   border-radius: var(--radius-control); cursor: default;
 }
 /* Selection is accent + a 1px inset ring, never a fill (design §1). */
-.sprint-editor .sprint-insert li.on { background: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-border); }
-.sprint-editor .sprint-insert li.off { opacity: 0.45; } /* illegal here — listed, with the reason as its hint */
-.sprint-editor .sprint-insert li.none { color: var(--muted-foreground); font-size: 11px; }
-.sprint-editor .sprint-insert .badge {
+.pressed-editor .pressed-insert li.on { background: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-border); }
+.pressed-editor .pressed-insert li.off { opacity: 0.45; } /* illegal here — listed, with the reason as its hint */
+.pressed-editor .pressed-insert li.none { color: var(--muted-foreground); font-size: 11px; }
+.pressed-editor .pressed-insert .badge {
   flex: none; padding: 2.5px 4px; border-radius: var(--radius-badge);
   font-family: var(--font-sans); font-size: 8.5px; font-weight: 600; line-height: 1;
 }
-.sprint-editor .sprint-insert .badge.comp { background: var(--comp-bg); color: var(--comp-fg); }
-.sprint-editor .sprint-insert .badge.snip { background: var(--info-bg); color: var(--info); }
-.sprint-editor .sprint-insert .badge.html { background: var(--field); color: var(--muted-foreground); }
-.sprint-editor .sprint-insert .badge.var { background: var(--field); color: var(--accent-link); }
-.sprint-editor .sprint-insert .name { font-family: var(--font-mono); font-size: 11.5px; font-weight: 500; }
-.sprint-editor .sprint-insert .hint {
+.pressed-editor .pressed-insert .badge.comp { background: var(--comp-bg); color: var(--comp-fg); }
+.pressed-editor .pressed-insert .badge.snip { background: var(--info-bg); color: var(--info); }
+.pressed-editor .pressed-insert .badge.html { background: var(--field); color: var(--muted-foreground); }
+.pressed-editor .pressed-insert .badge.var { background: var(--field); color: var(--accent-link); }
+.pressed-editor .pressed-insert .name { font-family: var(--font-mono); font-size: 11.5px; font-weight: 500; }
+.pressed-editor .pressed-insert .hint {
   margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--meta-foreground);
 }
 
 /* Markers: wavy underline, no ink skipping, so a squiggle under a `.` is still visible. */
-.sprint-editor .squiggly-error,
-.sprint-editor .squiggly-warning {
+.pressed-editor .squiggly-error,
+.pressed-editor .squiggly-warning {
   text-decoration-skip-ink: none;
 }
 </style>

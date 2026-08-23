@@ -1,6 +1,6 @@
 <!-- A Spoolman instance over HTTP. The base URL is a setting, so it survives a reload. -->
 <script setup lang="ts">
-import { spoolmanSource } from '@sprint/core'
+import { spoolmanSource } from '@pressed/core'
 import { Labeled } from '@/ui'
 import { settings } from '@/stores/settings'
 import type { Run } from './index'

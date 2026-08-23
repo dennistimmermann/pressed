@@ -9,9 +9,9 @@
   Status) — classes change, nothing unmounts, so Monaco survives crossing the breakpoint.
 -->
 <script setup lang="ts">
-import { computed, nextTick, ref, toRaw, useTemplateRef, watch } from 'vue'
+import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import { useElementSize, useEventListener, useMediaQuery } from '@vueuse/core'
-import { parseMeta } from '@sprint/core/template/meta.ts'
+import { ConfirmDialog, PaneRail } from '@/ui'
 import { LayersPane, ManageTemplates, PreviewPane, StatusPane } from '@/editor'
 import type { EditorMode } from '@/editor'
 import type { Loc } from '@/editor/ast.ts'
@@ -31,9 +31,10 @@ import {
 import { data } from '@/stores/data'
 import { settings } from '@/stores/settings'
 import {
-  bundled, deleteTemplate, duplicateTemplate, exportTemplate, importTemplates, isBundled,
-  newTemplate, renameTemplate, templateName, templates,
+  deleteTemplate, duplicateTemplate, exportTemplate, importTemplates,
+  newTemplate, renameTemplate, templateName,
 } from '@/stores/templates'
+import { allTemplates, ensureThumbnails, templateCards } from '@/stores/templateCards'
 
 // SPEC §3 E12: below 900 the three columns stack, Split is not offered and Layers is a select.
 const stacked = useMediaQuery('(max-width: 900px)')
@@ -239,12 +240,47 @@ const layersProps = computed(() => ({
   },
 }))
 
+// ---------------------------------------------------------------- collapse to rails (F8)
+// Collapsing always buys space: a side pane with every section shut is a 28px rail of vertical
+// eyebrows and the middle column takes the width back — in the Editor as in the other two views.
+
+const LAYERS_SECTIONS = { Layers: 'layers', Rules: 'rules', Script: 'script' } as const
+const layersRailed = computed(() => Object.values(LAYERS_SECTIONS).every((k) => settings.layersCollapsed[k]))
+const railLayers = () => { for (const k of Object.values(LAYERS_SECTIONS)) settings.layersCollapsed[k] = true }
+
+/** The Inspector's sections are named by what is at the caret; the rail says the same words. */
+const INSPECTOR_SECTIONS = {
+  element: { Attributes: 'attributes', Logic: 'logic', Style: 'style' },
+  rule: { Selector: 'props', 'Used by': 'attributes', Style: 'style' },
+  script: { Props: 'props' },
+} as const
+const inspectorSections = computed(
+  () => INSPECTOR_SECTIONS[editor.activeTab.kind === 'template' ? 'element' : editor.activeTab.kind === 'style' ? 'rule' : 'script'],
+)
+// Not in Code mode: the Preview lives in this column there, and railing it away would take the
+// label off the screen — collapsing buys space, it never hides the work.
+const inspectorRailed = computed(
+  () => mode.value !== 'code' && Object.values(inspectorSections.value).every((k) => settings.inspectorCollapsed[k]),
+)
+const railInspector = () => { for (const k of Object.keys(settings.inspectorCollapsed) as (keyof typeof settings.inspectorCollapsed)[]) settings.inspectorCollapsed[k] = true }
+const expandInspector = (title: string) => {
+  const key = (inspectorSections.value as Record<string, keyof typeof settings.inspectorCollapsed>)[title]
+  if (key) settings.inspectorCollapsed[key] = false
+}
+
 const statusProps = computed(() => ({
   messages: editor.messages,
   // Blocks has no footnote under the sheet, so the Status strip carries it (SPEC §4.5).
   okSummary: mode.value === 'blocks'
     ? footnote.value
     : `compiled · ${tabs.value.snippets.length} snippets · ${editor.components.length} components`,
+  // The strip's labelled cells: what compiled, as facts (F9) — never a running sentence.
+  facts: mode.value === 'blocks'
+    ? [{ v: footnote.value }]
+    : [
+        { k: 'snippets', v: String(tabs.value.snippets.length) },
+        { k: 'components', v: String(editor.components.length) },
+      ],
   // E10: one neutral row saying why the label shows field paths. Not an error, not counted.
   info: data.rows.length ? '' : 'no data connected — showing field paths',
   onJump: jumpTo,
@@ -252,48 +288,21 @@ const statusProps = computed(() => ({
 
 // ---------------------------------------------------------------- picker / manage
 
-const all = computed(() => [...templates.mine, ...bundled])
 const nameOf = (id: string | null) => {
-  const record = all.value.find((t) => t.id === id)
+  const record = allTemplates.value.find((t) => t.id === id)
   return record ? templateName(record) : 'Untitled'
 }
-const mediaText = (source: string) => {
-  const { width, height } = parseMeta(source).meta.size
-  return `${width} × ${height}`
+
+watch(() => editor.manageOpen, (open) => { if (open) void ensureThumbnails() })
+
+/** Deleting a stored template is the one act ⌘Z cannot reach, so it is the one act that asks
+    (every editor text edit is one undo away and never does). */
+const deleting = ref<string | null>(null)
+async function confirmDelete() {
+  const id = deleting.value
+  deleting.value = null
+  if (id) await deleteTemplate(id)
 }
-
-const thumbnails = ref<Record<string, string>>({})
-
-const manageItems = computed(() =>
-  all.value.map((t) => ({
-    id: t.id,
-    name: templateName(t),
-    meta: `${mediaText(t.source)} mm · ${isBundled(t.id) ? 'built-in' : 'mine'}`,
-    media: mediaText(t.source),
-    kind: (isBundled(t.id) ? 'built-in' : 'mine') as 'built-in' | 'mine',
-    assetsSummary: Object.keys(t.assets).length ? `${Object.keys(t.assets).length} assets` : undefined,
-    thumbnail: thumbnails.value[t.id],
-    size: parseMeta(t.source).meta.size,
-  })),
-)
-
-// ponytail: one compile per template, sequential, only when the dialog opens. Cache it if
-// the library ever grows past a few dozen.
-watch([() => editor.manageOpen, all], async ([open]) => {
-  if (!open) return
-  const { runtime } = await import('@/render/runtime-client')
-  const { labelDocument } = await import('@sprint/core/template/label.ts')
-  for (const t of all.value) {
-    if (thumbnails.value[t.id]) continue
-    try {
-      // toRaw: a Vue proxy cannot be structured-cloned across postMessage — the throw landed
-      // in the catch below and user-saved templates silently never got a thumbnail.
-      const result = await runtime().render({ source: t.source, assets: toRaw(t.assets), rows: [] })
-      if (result.html[0] != null)
-        thumbnails.value[t.id] = labelDocument({ html: result.html[0], css: result.css }, result.meta.size, false, result.meta.margin ?? 0)
-    } catch { /* a template that will not compile simply has no thumbnail */ }
-  }
-})
 
 /** Switching away from unsaved work asks first, and offers the third way out (design §4). */
 const pendingId = ref<string | null>(null)
@@ -346,14 +355,22 @@ async function onCreate() {
       :class="stacked ? 'flex-col overflow-y-auto' : ''"
     >
       <!-- Layers: every mode, every block. Nothing to show is an empty state, not a missing pane. -->
+      <PaneRail
+        v-if="layersRailed && !stacked" :titles="Object.keys(LAYERS_SECTIONS)"
+        @expand="settings.layersCollapsed[LAYERS_SECTIONS[$event as keyof typeof LAYERS_SECTIONS]] = false"
+      />
       <div
+        v-else
         class="min-w-0 flex-none border-b border-[var(--pane-border)]"
         :class="stacked ? 'order-2' : 'border-b-0'"
         :style="stacked ? undefined : { width: `${settings.layersWidth}px` }"
       >
         <LayersPane v-bind="layersProps" class="h-full" />
       </div>
-      <Splitter v-if="!stacked" v-model:size="settings.layersWidth" :min="180" />
+      <Splitter
+        v-if="!stacked && !layersRailed" v-model:size="settings.layersWidth" :min="180" collapsible
+        @collapse="railLayers"
+      />
 
       <!--
         The middle column is the only thing the mode changes. Both panes stay mounted in all
@@ -369,7 +386,7 @@ async function onCreate() {
       >
         <div v-show="mode !== 'code'" class="min-h-0 min-w-0" :style="canvasStyle">
           <PreviewPane
-            v-bind="canvasProps" handles :zoom="settings.zoomCanvas" class="h-full"
+            v-bind="canvasProps" handles :zoom="settings.zoomCanvas" :active="mode !== 'code'" class="h-full"
             @update:zoom="settings.zoomCanvas = $event"
           />
         </div>
@@ -382,11 +399,18 @@ async function onCreate() {
         </div>
       </div>
 
-      <Splitter v-if="!stacked" v-model:size="settings.inspectorWidth" :min="300" invert />
+      <Splitter
+        v-if="!stacked && !inspectorRailed" v-model:size="settings.inspectorWidth" :min="300" invert
+        :collapsible="mode !== 'code'" @collapse="railInspector"
+      />
+      <PaneRail
+        v-if="inspectorRailed && !stacked" :titles="Object.keys(inspectorSections)" @expand="expandInspector"
+      />
       <!-- Inspector: identical in every mode, plus the Preview when the canvas has left the
            middle column (SPEC §2). In Code mode the Preview is the top section of this column,
            cut off by the splitter rail. -->
       <div
+        v-else
         class="flex min-w-0 flex-none flex-col"
         :class="stacked && 'order-3'"
         :style="stacked ? undefined : { width: `${settings.inspectorWidth}px` }"
@@ -394,7 +418,7 @@ async function onCreate() {
         <template v-if="mode === 'code'">
           <div class="flex-none" :style="{ height: `${settings.previewHeight}px` }">
             <PreviewPane
-              v-bind="canvasProps" :footnote="footnote" :zoom="settings.zoomPreview" class="h-full"
+              v-bind="canvasProps" :footnote="footnote" :zoom="settings.zoomPreview" :active="mode === 'code'" class="h-full"
               @update:zoom="settings.zoomPreview = $event"
             />
           </div>
@@ -437,15 +461,22 @@ async function onCreate() {
     </div>
 
     <ManageTemplates
-      :open="editor.manageOpen" :items="manageItems"
+      :open="editor.manageOpen" :items="templateCards" :selected-id="editor.templateId"
       @close="editor.manageOpen = false"
       @open="editor.manageOpen = false; pick($event)"
       @duplicate="duplicateTemplate"
       @rename="renameTemplate"
       @export="exportTemplate"
-      @delete="deleteTemplate"
+      @delete="deleting = $event"
       @import="importTemplates"
       @create="onCreate"
+    />
+
+    <!-- Not undoable: it leaves the library for good, so it asks first. -->
+    <ConfirmDialog
+      :title="deleting ? `Delete “${nameOf(deleting)}”?` : null"
+      consequence="The template leaves your library. This cannot be undone."
+      @confirm="confirmDelete" @cancel="deleting = null"
     />
   </section>
 </template>

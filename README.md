@@ -1,4 +1,7 @@
-# sprint — print your own labels
+# Pressed — print your own labels
+
+> Formerly "pressed" — internal package/module ids (`@pressed/core`, the `pressed`
+> template module) keep the old name until the new one settles.
 
 Browser app: **data source → Vue template → preview → printer**. Each part is swappable.
 A template is a real `.vue` file with a `<meta>` block; it is compiled and rendered inside a
@@ -44,7 +47,7 @@ and rasterizing, so what you see is what prints.
 <style>.title { font: 700 13pt system-ui }</style>
 ```
 
-`row` is available in the markup, and via `import { useRow } from 'sprint'` in
+`row` is available in the markup, and via `import { useRow } from 'pressed'` in
 `<script setup>`. Built-in components: `QrCode`, `Barcode`, `Img`, `Fit`. Bundled assets are
 referenced as `asset:name` and become data URLs at render time. Templates render to static
 HTML — lifecycle hooks, timers and browser APIs raise a purity warning.
@@ -66,7 +69,7 @@ HTML — lifecycle hooks, timers and browser APIs raise a purity warning.
 
 ## The runtime frame
 
-`apps/web/runtime.html` loads `@sprint/core/runtime/main.ts` and is embedded as
+`apps/web/runtime.html` loads `@pressed/core/runtime/main.ts` and is embedded as
 `<iframe sandbox="allow-scripts" src="/runtime.html">`, so template code runs on a null
 origin with no access to the app, its storage or the printer. Because the frame's origin is
 opaque, every module script it loads is a cross-origin fetch: the server must send

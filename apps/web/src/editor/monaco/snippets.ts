@@ -3,14 +3,14 @@ import type { SnippetScope } from '../tabs'
 /**
  * `<snippet>` blocks are custom blocks: Volar sees them as opaque text, so nothing inside is
  * type-checked and no snippet is a known component. The fix is a *virtual model* per snippet —
- * the same SFC text the runtime compiles (`@sprint/core`'s loader `snippetToSfc`) — kept at its
+ * the same SFC text the runtime compiles (`@pressed/core`'s loader `snippetToSfc`) — kept at its
  * own URI so the language service treats it as a real file.
  *
  * Everything here is pure: deriving the text and mapping an offset back into the one file.
  */
 
 /** Where a snippet's virtual SFC lives. Its own directory, so a snippet cannot shadow a library component. */
-export const SNIPPET_DIR = 'file:///sprint/snippets/'
+export const SNIPPET_DIR = 'file:///pressed/snippets/'
 export const snippetUri = (name: string) => `${SNIPPET_DIR}${name}.vue`
 
 /** Names that can be both a file name and a `GlobalComponents` key. Anything else is skipped. */

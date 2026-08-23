@@ -1,4 +1,4 @@
-import type { Meta, RenderedLabel, RollLayout, Rotation, SheetLayout } from '@sprint/core'
+import type { Meta, RenderedLabel, RollLayout, Rotation, SheetLayout } from '@pressed/core'
 
 /**
  * One print run. `labels` is already expanded — copies were applied upstream, so a backend

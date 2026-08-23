@@ -5,9 +5,10 @@
 -->
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { anchorMenu } from '@/ui'
-import { mapping, setMapping, sourceFields } from '@/stores/data'
-import { meta, neededPaths } from '@/stores/editor'
+import { getPath } from '@pressed/core'
+import { EmptyState, Picker, type PickerRow } from '@/ui'
+import { mappedPreviewRow, mapping, setMapping, sourceFields } from '@/stores/data'
+import { effectiveMapping, meta, neededPaths } from '@/stores/editor'
 
 /** The menu offers `row.id`; a mapping stores what it sets on the row: `id`. */
 const rowPath = (path: string) => path.replace(/^row\./, '')
@@ -20,10 +21,16 @@ const keep = (map: Map<string, HTMLElement>, key: string) => (el: unknown) => {
   else map.delete(key)
 }
 
-/** Which target a source field is wired to, and the other way round. */
-const targetOf = (path: string) => (mapping.value[path] ? `row.${mapping.value[path]}` : null)
+/**
+ * Which target a source field is wired to, and the other way round — read off the *effective*
+ * mapping, so a field that feeds a variable simply by having its name is drawn as the wire it
+ * is. The wiring count and the picture come from the one answer (F5, atlas 05).
+ */
+const targetOf = (path: string) => (effectiveMapping.value[path] ? `row.${effectiveMapping.value[path]}` : null)
 const sourceOf = (target: string) =>
-  Object.keys(mapping.value).find((from) => mapping.value[from] === rowPath(target)) ?? null
+  Object.keys(effectiveMapping.value).find((from) => effectiveMapping.value[from] === rowPath(target)) ?? null
+/** Wired by name alone: there is no mapping to take away, and the wire says so (dashed). */
+const implicit = (path: string) => !!effectiveMapping.value[path] && !mapping.value[path]
 
 // Geometry is measured, not computed: the chips are laid out by flexbox, so ask the DOM where
 // they landed. One observer on the wrapper; `tick` is what makes a measurement reactive.
@@ -37,7 +44,7 @@ onMounted(() => {
 onBeforeUnmount(() => ro?.disconnect())
 watch([mapping, sourceFields, neededPaths], () => void nextTick(() => tick.value++))
 
-type Wire = { key: string; d: string; end: [number, number] }
+type Wire = { key: string; d: string; end: [number, number]; byName: boolean }
 const wires = computed<Wire[]>(() => {
   void tick.value
   const box = wrap.value?.getBoundingClientRect()
@@ -52,20 +59,60 @@ const wires = computed<Wire[]>(() => {
     const x1 = ra.right - box.left, y1 = ra.top + ra.height / 2 - box.top
     const x2 = rb.left - box.left, y2 = rb.top + rb.height / 2 - box.top
     const mid = (x1 + x2) / 2
-    return [{ key: field.path, d: `M${x1} ${y1} C${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`, end: [x2, y2] }]
+    return [{ key: field.path, d: `M${x1} ${y1} C${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`, end: [x2, y2], byName: implicit(field.path) }]
   })
 })
 
 // ---------------------------------------------------------------- picking
 const open = ref<{ kind: 'source' | 'target'; key: string } | null>(null)
-const pos = ref<Record<string, string>>({})
+const anchor = ref<DOMRect | null>(null)
 function openMenu(event: { currentTarget: EventTarget | null }, kind: 'source' | 'target', key: string) {
-  pos.value = anchorMenu((event.currentTarget as HTMLElement).getBoundingClientRect(), 260, { height: 240 })
-  open.value = open.value?.key === key && open.value.kind === kind ? null : { kind, key }
+  const same = open.value?.key === key && open.value.kind === kind
+  anchor.value = same ? null : (event.currentTarget as HTMLElement).getBoundingClientRect()
+  open.value = same ? null : { kind, key }
 }
+const close = () => { open.value = null; anchor.value = null }
 function pick(sourcePath: string, target: string | null) {
   setMapping(sourcePath, target)
-  open.value = null
+  close()
+}
+
+/** The one `{ }` shape, both ways round: from a field, which variable it feeds — from a
+    variable, which field feeds it. Every row carries the value it would actually carry. */
+const pickerRows = computed<PickerRow[]>(() => {
+  const o = open.value
+  if (!o) return []
+  if (o.kind === 'source')
+    return neededPaths.value.map((path) => ({
+      value: path,
+      label: path,
+      preview: String(getPath(mappedPreviewRow.value, rowPath(path)) ?? ''),
+      on: targetOf(o.key) === path,
+    }))
+  return sourceFields.value.map((f) => ({
+    value: f.path, label: f.path, preview: f.sample, on: sourceOf(o.key) === f.path,
+  }))
+})
+
+/** A pair wired by name alone has no mapping to take away — the unbind row is not offered. */
+const canUnmap = computed(() => {
+  const o = open.value
+  if (!o) return false
+  const from = o.kind === 'source' ? o.key : sourceOf(o.key)
+  return !!from && !!mapping.value[from]
+})
+
+/** Picking from a variable means wiring the chosen field to it. */
+const onPick = (value: string) => {
+  const o = open.value
+  if (o) pick(o.kind === 'source' ? o.key : value, o.kind === 'source' ? value : o.key)
+}
+const onUnmap = () => {
+  const o = open.value
+  if (!o) return
+  const from = o.kind === 'source' ? o.key : sourceOf(o.key)
+  if (from) pick(from, null)
+  else close()
 }
 
 // ---------------------------------------------------------------- dragging
@@ -113,18 +160,18 @@ const ghostPath = computed(() => {
         <button
           v-for="field in sourceFields" :key="field.path" type="button"
           :ref="keep(sourceEls, field.path)"
-          class="chip src" :class="{ wired: !!targetOf(field.path) }"
+          class="chip src" :class="{ wired: !!targetOf(field.path), 'by-name': implicit(field.path) }"
           @pointerdown="onPointerDown($event, field.path)"
         >
           <span>{{ field.path }}</span>
           <span class="sample">{{ field.sample }}</span>
         </button>
-        <p v-if="!sourceFields.length" class="note">no data loaded</p>
+        <EmptyState v-if="!sourceFields.length" text="load a CSV or connect Spoolman to get rows" />
       </div>
 
       <!-- One line per mapping, drawn between the chip edges it connects. -->
       <svg class="wires" aria-hidden="true">
-        <path v-for="w in wires" :key="w.key" :d="w.d" />
+        <path v-for="w in wires" :key="w.key" :d="w.d" :class="{ 'by-name': w.byName }" />
         <circle v-for="w in wires" :key="`${w.key}-end`" :cx="w.end[0]" :cy="w.end[1]" r="2.5" />
         <path v-if="ghostPath" class="ghost" :d="ghostPath" />
       </svg>
@@ -137,34 +184,17 @@ const ghostPath = computed(() => {
           class="chip tgt" :class="{ on: !!sourceOf(path) }"
           @click="openMenu($event, 'target', path)"
         >{{ path }}</button>
-        <p v-if="!neededPaths.length" class="note">this template reads nothing off row</p>
+        <EmptyState v-if="!neededPaths.length" text="this template reads nothing off a row" />
       </div>
     </div>
-    <p class="foot">the same mappings as the Table tab — drag a field onto a variable to wire it</p>
+    <p class="foot">
+      the same wiring as the Table tab — drag a field onto a variable to wire it<template v-if="wires.some((w) => w.byName)">; a dashed wire is a name that already matches</template>
+    </p>
 
-    <template v-if="open">
-      <span class="backdrop" @click="open = null" />
-      <div class="menu" :style="pos">
-        <!-- From a source field: which variable it feeds. From a variable: which field feeds it. -->
-        <template v-if="open.kind === 'source'">
-          <button
-            v-for="path in neededPaths" :key="path" type="button" class="item"
-            :class="{ on: targetOf(open.key) === path }" @click="pick(open.key, path)"
-          >{{ path }}</button>
-          <button type="button" class="item unset" @click="pick(open.key, null)">– (unmap)</button>
-        </template>
-        <template v-else>
-          <button
-            v-for="field in sourceFields" :key="field.path" type="button" class="item"
-            :class="{ on: sourceOf(open.key) === field.path }" @click="pick(field.path, open.key)"
-          >{{ field.path }}</button>
-          <button
-            v-if="sourceOf(open.key)" type="button" class="item unset"
-            @click="pick(sourceOf(open.key)!, null)"
-          >– (unmap)</button>
-        </template>
-      </div>
-    </template>
+    <Picker
+      :anchor="anchor" :rows="pickerRows" :action="canUnmap ? '– unmapped' : undefined" :width="260" placeholder="variable…"
+      @pick="onPick" @action="onUnmap" @close="close"
+    />
   </div>
 </template>
 
@@ -185,15 +215,19 @@ const ghostPath = computed(() => {
 .chip .sample { font-size: 8.5px; color: var(--meta-foreground); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .src { cursor: grab; }
 .src.wired { background: var(--pane); }
+.src.by-name { border-style: dashed; }
 /* A wired variable is --accent plus the 1px ring; an unwired one is a dashed outline (invariant 1). */
 .tgt { justify-content: center; border-style: dashed; color: var(--meta-foreground); }
+/* THE selection recipe: --accent wash + the 1px inset ring, nothing else (F14). */
 .tgt.on {
-  border-style: solid; border-color: var(--primary); background: var(--accent);
+  border-style: solid; border-color: transparent; background: var(--accent);
   color: var(--accent-foreground); box-shadow: inset 0 0 0 1px var(--primary);
 }
 
 .wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .wires path { fill: none; stroke: var(--primary); stroke-width: 1.5; }
+/* Wired because the names agree, not because anyone said so: the same wire, drawn lighter. */
+.wires path.by-name { stroke: var(--ok); stroke-dasharray: 4 3; }
 .wires circle { fill: var(--primary); }
 .wires .ghost { stroke: var(--faint-foreground); stroke-dasharray: 3 3; }
 
@@ -201,21 +235,4 @@ const ghostPath = computed(() => {
   margin: 0; font-family: var(--font-mono); font-size: 10px; color: var(--meta-foreground);
 }
 .foot { padding: 0 14px 12px; text-align: center; }
-
-/* ---- the picker (the InspectorPane recipe: a backdrop and a fixed card) ---- */
-.backdrop { position: fixed; inset: 0; z-index: 19; }
-.menu {
-  position: fixed; z-index: 60; width: 260px; max-height: 320px; overflow-y: auto; padding: 6px;
-  border: 1px solid var(--field-border); border-radius: var(--radius-trough); background: var(--popover);
-  box-shadow: var(--shadow-popover);
-}
-.menu .item {
-  display: flex; align-items: center; width: 100%; height: 26px; padding: 0 9px;
-  border: 0; border-radius: var(--radius-control); background: transparent;
-  font-family: var(--font-mono); font-size: 11px; color: var(--popover-foreground); text-align: left;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.menu .item:hover { background: var(--accent); }
-.menu .item.on { color: var(--accent-foreground); box-shadow: inset 0 0 0 1px var(--primary); }
-.menu .item.unset { color: var(--faint-foreground); }
 </style>

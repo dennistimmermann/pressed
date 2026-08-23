@@ -42,13 +42,14 @@ const emit = defineEmits<{ pick: [value: string] }>()
 
 <style scoped>
 .seg {
-  display: flex; height: 25px; padding: 2px; gap: 2px; min-width: 0;
+  /* A group never clips: a segment keeps its 24px and the group wraps instead (F19). */
+  display: flex; flex-wrap: wrap; min-height: var(--h-control); padding: 2px; gap: 2px; min-width: 0;
   border: 1px solid var(--field-border); border-radius: var(--radius-control); background: var(--field);
 }
 .seg button {
-  display: flex; align-items: center; justify-content: center; flex: 1; min-width: 24px; height: 19px;
+  display: flex; align-items: center; justify-content: center; flex: 1 0 auto; min-width: 24px; height: 19px;
   padding: 0 5px; border: 0; border-radius: var(--radius-badge); background: transparent;
-  font-family: var(--font-mono); font-size: 10.5px; color: var(--muted-foreground);
+  font-family: var(--font-mono); font-size: var(--t5); color: var(--muted-foreground);
   transition: background-color 120ms ease-out, color 120ms ease-out;
 }
 .seg button:hover:not(:disabled) { color: var(--foreground); }

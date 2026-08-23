@@ -6,11 +6,11 @@
   the attribute, so ⌘Z in the editor undoes it. Structure lives in Layers, classes in the pills.
 -->
 <script setup lang="ts">
-import { anchorMenu } from '@/ui'
+import { AddRow, Menu, type MenuItem, Picker, type PickerRow } from '@/ui'
 import { computed, nextTick, ref, watch } from 'vue'
 import { attributeEdit, elementAt, loopAlias, loopClause, siblingsOf, type Edit, type ElementInfo, type Loc, type PropInfo, DIRECTIVE_LABELS } from './ast'
 import type { EditorHandle, Marker } from './editor-handle'
-import type { PropSchema } from '@sprint/core'
+import type { PropSchema } from '@pressed/core'
 import type { ComponentSchema } from './types'
 import Msgs from './Msgs.vue'
 import { aria as ariaFor, hasError, msgsBy } from './inspector/markers'
@@ -208,36 +208,41 @@ function setLoop(item: string, index: string, list: string) {
   commit('v-for', 'set-static', `${loopAlias(item, index)} in ${list.trim()}`)
 }
 
-// --- `{ }` picker: the one home for inserting a variable besides typing (SPEC §4.6)
+// --- `{ }` picker: the one home for inserting a variable besides typing (SPEC §4.6).
+// `ui/Picker` is that one shape — search over 8 rows, a live value on every row — and the
+// printer's copies picker is the same component (atlas 25 vs 42).
 const picker = ref<string | null>(null) // field name, or `text`
-const pickerPos = ref<Record<string, string>>({})
+const pickerAnchor = ref<DOMRect | null>(null)
 
-/** The add-menus render in fixed space too (`ui/anchor` — a pane's overflow clips absolutes). */
-const addPos = ref<Record<string, string>>({})
+/** Both add-menus are `ui/Menu`: anchored, teleported, viewport-safe. */
+const addAnchor = ref<DOMRect | null>(null)
 function toggleAdd(kind: 'attribute' | 'directive', e: MouseEvent) {
-  if (adding.value === kind) return void (adding.value = null)
-  addPos.value = anchorMenu((e.currentTarget as HTMLElement).getBoundingClientRect(), 260, { height: 200 })
+  if (adding.value === kind) return closeAdd()
+  addAnchor.value = (e.currentTarget as HTMLElement).getBoundingClientRect()
   adding.value = kind
 }
-const query = ref('')
+const closeAdd = () => { adding.value = null; addAnchor.value = null }
+const closePicker = () => { picker.value = null; pickerAnchor.value = null }
 
 function openPicker(event: MouseEvent, name: string) {
-  const r = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  pickerPos.value = anchorMenu(r, 260, { align: 'right' })
-  query.value = ''
-  picker.value = picker.value === name ? null : name
+  const same = picker.value === name
+  pickerAnchor.value = same ? null : (event.currentTarget as HTMLElement).getBoundingClientRect()
+  picker.value = same ? null : name
 }
 
-const variableList = computed(() => {
-  const q = query.value.trim().toLowerCase()
-  const all = props.variables ?? []
-  return q ? all.filter((v) => v.path.toLowerCase().includes(q)) : all
-})
+/** `hint` is the variable's live value (or its type, in a snippet): the row's preview. */
+const variableRows = computed<PickerRow[]>(() =>
+  (props.variables ?? []).map((v) => ({ value: v.path, label: v.path, preview: v.hint })),
+)
+const directiveItems = computed<MenuItem[]>(() =>
+  addableDirectives.value.map((name) => ({ value: name, label: DIRECTIVE_LABELS[name] ?? name })),
+)
+const attributeItems = computed<MenuItem[]>(() => addable.value.map((name) => ({ value: name, mono: true, label: name })))
 
 /** A binding is what a variable in an attribute *is*: `:size="row.x"`. In text it is `{{ x }}`. */
 function pickVariable(path: string) {
   const name = picker.value
-  picker.value = null
+  closePicker()
   if (!name || !props.element) return
   if (name === 'text') {
     const current = props.element.text?.value ?? ''
@@ -253,7 +258,7 @@ const newAttr = ref('')
 
 function addAttribute(name: string) {
   const clean = name.trim()
-  adding.value = null
+  closeAdd()
   newAttr.value = ''
   if (!clean) return
   focusName = clean
@@ -262,7 +267,7 @@ function addAttribute(name: string) {
 
 /** An empty directive, then straight into it: `v-else` is the one that carries no expression. */
 function addDirective(name: string) {
-  adding.value = null
+  closeAdd()
   if (name === 'v-else') return commit(name, 'set-static', true)
   if (name === 'v-for') {
     // A loop always comes with its index (numbered lists are the everyday case) and is keyed by it.
@@ -409,40 +414,33 @@ watch(
     </div>
     </template>
 
+    <!-- The one add grammar: a dashed `+ noun` at the foot of the list it extends (F18). -->
     <div v-if="part !== 'logic'" class="add">
       <input
         v-if="adding === 'attribute' && !addable.length" :ref="autofocus" v-model="newAttr" placeholder="name"
-        aria-label="new attribute name" class="ctl" @change="addAttribute(newAttr)" @keydown.esc="adding = null"
+        aria-label="new attribute name" class="ctl" @change="addAttribute(newAttr)" @keydown.esc="closeAdd"
       >
-      <button v-else type="button" class="more" @click="toggleAdd('attribute', $event)">+ attribute</button>
+      <AddRow v-else noun="attribute" @click="toggleAdd('attribute', $event)" />
     </div>
     <div v-if="part === 'logic' && addableDirectives.length" class="add">
-      <button type="button" class="more" @click="toggleAdd('directive', $event)">+ directive</button>
+      <AddRow noun="directive" @click="toggleAdd('directive', $event)" />
     </div>
 
-    <!-- Popovers: the column is narrow and clips, so both hang off the button in fixed space. -->
-    <template v-if="picker || adding === 'directive' || (adding === 'attribute' && addable.length)">
-      <span class="backdrop" @click="((picker = null), (adding = null))" />
-
-      <div v-if="picker" class="menu" :style="pickerPos" @keydown.escape="picker = null">
-        <input v-if="(variables?.length ?? 0) > 8" :ref="autofocus" v-model="query" placeholder="variable…" aria-label="filter">
-        <ul role="listbox">
-          <li v-for="v in variableList" :key="v.path" role="option" @mousedown.prevent="pickVariable(v.path)">
-            <span class="name">{{ v.path }}</span><span class="hint">{{ v.hint }}</span>
-          </li>
-          <li v-if="!variableList.length" class="none">nothing to insert here</li>
-        </ul>
-      </div>
-
-      <div v-else-if="adding === 'directive'" class="menu at-add" :style="addPos">
-        <button v-for="name in addableDirectives" :key="name" type="button" class="item" @click="addDirective(name)">{{ DIRECTIVE_LABELS[name] }}</button>
-      </div>
-
-      <div v-else class="menu at-add" :style="addPos">
-        <button v-for="name in addable" :key="name" type="button" class="item" @click="addAttribute(name)">{{ name }}</button>
-        <input :ref="autofocus" v-model="newAttr" placeholder="new…" aria-label="new attribute name" @change="addAttribute(newAttr)" @keydown.esc="adding = null">
-      </div>
-    </template>
+    <!-- One popover shape for both, placed by anchorMenu and teleported out of the pane. -->
+    <Picker
+      :anchor="pickerAnchor" :rows="variableRows" :width="260" align="right" placeholder="variable…"
+      empty="nothing to insert here" @pick="pickVariable" @close="closePicker"
+    />
+    <Menu
+      :anchor="adding === 'directive' ? addAnchor : null" :items="directiveItems" :width="260"
+      @pick="addDirective" @close="closeAdd"
+    />
+    <Menu
+      :anchor="adding === 'attribute' && addable.length ? addAnchor : null" :items="attributeItems"
+      :width="260" @pick="addAttribute" @close="closeAdd"
+    >
+      <input :ref="autofocus" v-model="newAttr" class="new" placeholder="new…" aria-label="new attribute name" @change="addAttribute(newAttr)" @keydown.esc="closeAdd">
+    </Menu>
   </div>
 </template>
 
@@ -489,26 +487,12 @@ watch(
 }
 .pick:hover { border-color: var(--primary); background: var(--accent); }
 .add { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; }
-.more { border: 0; background: transparent; padding: 0; font-family: var(--font-sans); font-size: 10.5px; font-weight: 500; color: var(--accent-link); }
-.more:hover { text-decoration: underline; }
 
-/* Popover shell — SPEC §4.8, the same one Layers uses. */
-.backdrop { position: fixed; inset: 0; z-index: 19; }
-.menu {
-  position: fixed; z-index: 60; width: 260px; padding: 6px;
-  border: 1px solid var(--field-border); border-radius: var(--radius-trough); background: var(--popover);
-  box-shadow: var(--shadow-popover);
+/* The one input that rides inside a Menu (the `new…` attribute name). */
+.new {
+  width: 100%; height: 26px; margin-top: 4px; padding: 0 9px; border: 1px solid transparent;
+  border-radius: var(--radius-control); background: var(--field);
+  font-family: var(--font-mono); font-size: var(--t3); outline: none;
 }
-.menu input { width: 100%; height: 26px; padding: 0 8px; border: 1px solid transparent; border-radius: var(--radius-control); background: var(--field); font-family: var(--font-mono); font-size: 11px; outline: none; }
-.menu input:focus-visible { border-color: var(--primary); background: var(--pane); }
-.menu ul { max-height: 260px; margin: 4px 0 0; padding: 0; overflow: auto; list-style: none; }
-.menu li, .menu .item {
-  display: flex; align-items: center; gap: 8px; width: 100%; height: 26px; padding: 0 9px;
-  border: 0; border-radius: var(--radius-control); background: transparent; cursor: default;
-  font-family: var(--font-mono); font-size: 11px; color: var(--popover-foreground); text-align: left;
-}
-.menu li:hover, .menu .item:hover { background: var(--accent); }
-.menu li.none { color: var(--muted-foreground); }
-.menu .hint { margin-left: auto; font-size: 10px; color: var(--meta-foreground); }
-.menu .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.new:focus-visible { border-color: var(--primary); background: var(--pane); }
 </style>

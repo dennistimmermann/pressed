@@ -3,9 +3,8 @@ import { editor } from 'monaco-editor-core'
 /**
  * The Monaco theme from design §3.3 — "so the app has one code voice".
  *
- * Two jobs: the fixed token palette from the design table, and the app tokens (`--accent`,
- * `--primary`, `--border`) read off `<html>` at call time so the editor follows the theme
- * toggle. Monaco only understands hex, and some tokens are `oklch()`, so every colour goes
+ * One static theme: there is no dark mode. The colours are app tokens read off `<html>` at
+ * call time. Monaco only understands hex, and some tokens are `oklch()`, so every colour goes
  * through a 1×1 canvas — the browser is the only correct oklch→sRGB converter available.
  */
 
@@ -29,40 +28,27 @@ const token = (v: string) => hex(getComputedStyle(document.documentElement).getP
  * voices the spec does not name keep the previous pass's hues, as tokens.
  */
 const palette = {
-  light: {
-    background: '--pane',
-    tag: '--code-keyword',
-    attribute: '--code-keyword',
-    string: '--code-string',
-    expression: '--code-expression',
-    text: '--foreground',
-    lineNumber: '--faint-foreground',
-    marker: '--destructive',
-  },
-  dark: {
-    background: '--pane',
-    tag: '--code-keyword',
-    attribute: '--code-keyword',
-    string: '--code-string',
-    expression: '--code-expression',
-    text: '--foreground',
-    lineNumber: '--faint-foreground',
-    marker: '--destructive',
-  },
+  background: '--pane',
+  tag: '--code-keyword',
+  attribute: '--code-keyword',
+  string: '--code-string',
+  expression: '--code-expression',
+  text: '--foreground',
+  lineNumber: '--faint-foreground',
+  marker: '--destructive',
 }
 
 /** A palette entry is either a token name or (for the hues the spec does not fix) a colour. */
 const colour = (v: string) => (v.startsWith('--') ? token(v) : hex(v))
 
-export const THEME_NAME = 'sprint'
+export const THEME_NAME = 'pressed'
 
-/** (Re)define the theme for the current `<html>` class. Call again when `.dark` flips. */
+/** Define the theme. Colours come from the tokens, which never change. */
 export function defineSprintTheme(): string {
-  const dark = document.documentElement.classList.contains('dark')
-  const c = dark ? palette.dark : palette.light
+  const c = palette
 
   editor.defineTheme(THEME_NAME, {
-    base: dark ? 'vs-dark' : 'vs',
+    base: 'vs',
     inherit: false,
     rules: [
       { token: '', foreground: colour(c.text) },

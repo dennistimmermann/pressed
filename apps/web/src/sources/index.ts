@@ -1,5 +1,5 @@
 import type { Component } from 'vue'
-import type { Row } from '@sprint/core'
+import type { Row } from '@pressed/core'
 import type { SourceId } from '@/stores/data'
 import CsvPanel from './CsvPanel.vue'
 import NonePanel from './NonePanel.vue'

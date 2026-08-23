@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, useTemplateRef, watch } from 'vue'
-import { ViewChip } from '@/ui'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useTemplateRef, watch } from 'vue'
+import { Chip } from '@/ui'
+import { fitScale, INSET } from './fit'
 import type { Loc } from './ast'
 
 /**
@@ -43,11 +44,17 @@ const props = withDefaults(
     empty?: boolean
     /** `fit`, or a scale factor. Persisted by the host, per mount group (SPEC §6). */
     zoom?: 'fit' | number
+    /**
+     * On screen right now. A pane the host has `v-show`n away has no box to measure, and a
+     * ResizeObserver is not guaranteed to report the way back in (it never does in a throttled
+     * tab) — so the host says when the pane is worth measuring again (F21).
+     */
+    active?: boolean
   }>(),
   {
     mode: 'rendered', rasterSrc: '', state: 'ok', selectedLoc: null, matchedLocs: () => [],
     scopeRange: null, crumbs: () => [], row: () => ({ index: 0, total: 0 }), footnote: '',
-    handles: false, resizable: false, empty: false, zoom: 'fit',
+    handles: false, resizable: false, empty: false, zoom: 'fit', active: true,
   },
 )
 
@@ -92,25 +99,25 @@ const INSPECTOR = `
 <style>
   html, body { overflow: hidden }
   :root { --u: 1 }
-  #sprint-ui { position: fixed; inset: 0; pointer-events: none; z-index: 2147483647 }
-  #sprint-ui > div { position: absolute; box-sizing: border-box }
-  #sprint-ui .tab {
+  #pressed-ui { position: fixed; inset: 0; pointer-events: none; z-index: 2147483647 }
+  #pressed-ui > div { position: absolute; box-sizing: border-box }
+  #pressed-ui .tab {
     background: ${ACCENT}; color: #fff; border-radius: calc(3px * var(--u));
     padding: calc(1px * var(--u)) calc(4px * var(--u)); transform: translateY(-100%);
     font: 500 calc(10px * var(--u))/1.4 ui-monospace, monospace; white-space: nowrap;
   }
-  #sprint-ui .hd { background: #fff; border: calc(2px * var(--u)) solid ${ACCENT}; pointer-events: auto; cursor: nwse-resize }
-  #sprint-ui .drop { background: ${ACCENT} }
-  #sprint-ui .into { border: calc(2px * var(--u)) solid ${ACCENT} }
-  [data-sprint-hover] { outline: calc(1px * var(--u)) solid ${ACCENT} !important; outline-offset: calc(1px * var(--u)) }
-  [data-sprint-match] { outline: calc(1.5px * var(--u)) solid ${ACCENT} !important; outline-offset: calc(1px * var(--u)) }
-  [data-sprint-sel] { outline: calc(2px * var(--u)) solid ${ACCENT} !important; outline-offset: calc(3px * var(--u)) }
-  [data-sprint-dim] { opacity: 0.32 !important; pointer-events: none }
+  #pressed-ui .hd { background: #fff; border: calc(2px * var(--u)) solid ${ACCENT}; pointer-events: auto; cursor: nwse-resize }
+  #pressed-ui .drop { background: ${ACCENT} }
+  #pressed-ui .into { border: calc(2px * var(--u)) solid ${ACCENT} }
+  [data-pressed-hover] { outline: calc(1px * var(--u)) solid ${ACCENT} !important; outline-offset: calc(1px * var(--u)) }
+  [data-pressed-match] { outline: calc(1.5px * var(--u)) solid ${ACCENT} !important; outline-offset: calc(1px * var(--u)) }
+  [data-pressed-sel] { outline: calc(2px * var(--u)) solid ${ACCENT} !important; outline-offset: calc(3px * var(--u)) }
+  [data-pressed-dim] { opacity: 0.32 !important; pointer-events: none }
 </style>
 <script>
 (function () {
   var SEL = '[data-loc],[data-inst]'
-  var ui = document.createElement('div'); ui.id = 'sprint-ui'; document.body.appendChild(ui)
+  var ui = document.createElement('div'); ui.id = 'pressed-ui'; document.body.appendChild(ui)
   var S = { sel: null, match: [], scope: null, handles: false, resizable: false, tab: '' }
   var drag = null, resize = null, hover = null
 
@@ -135,9 +142,9 @@ const INSPECTOR = `
   function paint() {
     var els = all(), i, el
     for (i = 0; i < els.length; i++) {
-      els[i].removeAttribute('data-sprint-sel')
-      els[i].removeAttribute('data-sprint-match')
-      els[i].removeAttribute('data-sprint-dim')
+      els[i].removeAttribute('data-pressed-sel')
+      els[i].removeAttribute('data-pressed-match')
+      els[i].removeAttribute('data-pressed-dim')
     }
     // In a scope: everything outside it dims and stops taking clicks, but stays laid out.
     if (S.scope) {
@@ -148,12 +155,12 @@ const INSPECTOR = `
       }
       for (i = 0; i < els.length; i++) {
         el = els[i]
-        if (keep.has(el) || (el.parentElement && el.parentElement.closest('[data-sprint-dim]'))) continue
-        el.setAttribute('data-sprint-dim', '')
+        if (keep.has(el) || (el.parentElement && el.parentElement.closest('[data-pressed-dim]'))) continue
+        el.setAttribute('data-pressed-dim', '')
       }
     }
-    for (i = 0; i < S.match.length; i++) mark(find(S.match[i]), 'data-sprint-match')
-    mark(find(S.sel), 'data-sprint-sel')
+    for (i = 0; i < S.match.length; i++) mark(find(S.match[i]), 'data-pressed-match')
+    mark(find(S.sel), 'data-pressed-sel')
   }
 
   function mark(list, attr) { for (var i = 0; i < list.length; i++) list[i].setAttribute(attr, '') }
@@ -171,14 +178,19 @@ const INSPECTOR = `
   function overlay() {
     ui.innerHTML = ''
     var el = find(S.sel)[0]
-    if (!el || el.hasAttribute('data-sprint-dim') || drag) return
+    if (!el || el.hasAttribute('data-pressed-dim') || drag) return
     var r = el.getBoundingClientRect(), k = u()
     var tab = document.createElement('div')
     tab.className = 'tab'; tab.textContent = S.tab
     tab.style.left = (r.left - 3 * k) + 'px'; tab.style.top = (r.top - 4 * k) + 'px'
     ui.appendChild(tab)
-    // An element at the very top of the sheet would push its tab off the document: keep it in.
-    if (r.top - 4 * k - tab.offsetHeight < 0) { tab.style.transform = 'none'; tab.style.top = r.top + 'px' }
+    // An element at the very top of the sheet has no room above it — the tab then hangs *under*
+    // it. It never sits on top of the element: covering the very text you selected is what the
+    // badge is there to name (F: preview overlay name badge).
+    if (r.top - 4 * k - tab.offsetHeight < 0) {
+      tab.style.transform = 'none'
+      tab.style.top = Math.min(r.bottom + 3 * k, innerHeight - tab.offsetHeight) + 'px'
+    }
     if (!S.handles || !S.resizable) return
     var s = 9 * k
     box('hd', r.right - s / 2, r.top - s / 2, s, s).setAttribute('data-k', 'tr')
@@ -187,16 +199,16 @@ const INSPECTOR = `
 
   function setHover(el) {
     if (hover === el) return
-    if (hover) hover.removeAttribute('data-sprint-hover')
-    hover = el && !el.hasAttribute('data-sprint-sel') ? el : null
-    if (hover) hover.setAttribute('data-sprint-hover', '')
+    if (hover) hover.removeAttribute('data-pressed-hover')
+    hover = el && !el.hasAttribute('data-pressed-sel') ? el : null
+    if (hover) hover.setAttribute('data-pressed-hover', '')
   }
 
   /** What the pointer is over, skipping the dragged element and its own descendants. */
   function under(x, y, skip) {
     var el = hit(document.elementFromPoint(x, y))
     while (el && (el === skip || skip.contains(el))) el = el.parentElement ? hit(el.parentElement) : null
-    if (!el || el.hasAttribute('data-sprint-dim')) return null
+    if (!el || el.hasAttribute('data-pressed-dim')) return null
     var r = el.getBoundingClientRect()
     var into = !el.children.length && !el.textContent.trim() && r.height > 8
     var t = (y - r.top) / (r.height || 1)
@@ -301,12 +313,12 @@ const INSPECTOR = `
       var a = els[i].getAttribute('data-loc'); if (a) out[a] = v
       var b = els[i].getAttribute('data-inst'); if (b) out[b] = v
     }
-    post({ type: 'sprint-computed', styles: out })
+    post({ type: 'pressed-computed', styles: out })
   })
 
   addEventListener('message', function (e) {
     var d = e.data || {}
-    if (d.type !== 'sprint-state') return
+    if (d.type !== 'pressed-state') return
     S.sel = d.sel; S.match = d.match || []; S.scope = d.scope
     S.handles = !!d.handles; S.resizable = !!d.resizable; S.tab = d.tab || ''
     document.documentElement.style.setProperty('--u', d.u)
@@ -323,21 +335,38 @@ const srcdoc = computed(() => {
 // ---------------------------------------------------------------- zoom & pan
 
 const body = useTemplateRef('body')
-const fitScale = ref(1)
-const scale = computed(() => (props.zoom === 'fit' ? fitScale.value : props.zoom))
+
+/**
+ * The canvas box, in px — measured, because only the DOM knows it. Kept as state rather than
+ * read on demand so `fit` and `clipped` are plain computeds off it. A pane with no box (the
+ * host has it `v-show`n away) keeps the last box it had: measuring a hidden pane used to write
+ * a fit of ×0.1 that nothing ever undid (atlas 30 · 31).
+ */
+const FOOT = 26 // the mono line under the sheet, when the mount carries one
+const box = ref({ width: 0, height: 0 })
+function measure() {
+  const el = body.value
+  if (!el?.clientWidth || !el.clientHeight) return
+  box.value = { width: el.clientWidth, height: el.clientHeight - (props.footnote ? FOOT : 0) }
+}
+const recomputeFit = measure
+
+const labelPx = computed(() => ({ width: props.sizeMm.width * PX_PER_MM, height: props.sizeMm.height * PX_PER_MM }))
+const fit = computed(() => fitScale(box.value, labelPx.value))
+const scale = computed(() => (props.zoom === 'fit' ? fit.value : props.zoom))
 const sheet = computed(() => ({
-  width: `${props.sizeMm.width * PX_PER_MM * scale.value}px`,
-  height: `${props.sizeMm.height * PX_PER_MM * scale.value}px`,
+  width: `${labelPx.value.width * scale.value}px`,
+  height: `${labelPx.value.height * scale.value}px`,
 }))
 
-function recomputeFit() {
-  const el = body.value
-  if (!el) return
-  const padding = 32 // the stage's own; the footnote line under the sheet costs another 28
-  const w = (el.clientWidth - padding) / (props.sizeMm.width * PX_PER_MM)
-  const h = (el.clientHeight - padding - (props.footnote ? 28 : 0)) / (props.sizeMm.height * PX_PER_MM)
-  fitScale.value = Math.max(0.1, Math.min(w, h))
-}
+/** Zoomed past the canvas — its inset included, since that is what the sheet actually sits in:
+    the view pans and says so, never a silent crop (F21). */
+const clipped = computed(
+  () =>
+    box.value.width > 0 &&
+    (labelPx.value.width * scale.value > box.value.width - 2 * INSET ||
+      labelPx.value.height * scale.value > box.value.height - 2 * INSET),
+)
 
 /** Steps of 0.5 in ×0.5 – ×8 (SPEC §4.5). */
 const stepZoom = (by: number) =>
@@ -362,7 +391,20 @@ onBeforeUnmount(() => {
   observer?.disconnect()
   removeEventListener('message', onFrameMessage)
 })
-watch(() => props.sizeMm, recomputeFit, { deep: true })
+/** Coming back on screen, or growing a footnote row, changes the box a ResizeObserver may
+    never report — ask again once the DOM has settled. */
+watch([() => props.active, () => props.footnote], () => void nextTick(recomputeFit))
+/**
+ * A different label is a different fit: zoom never carries across labels of different size
+ * (F21, atlas 35). Switching template — or resizing the label in Label setup — auto-Fits.
+ */
+watch(
+  () => [props.sizeMm.width, props.sizeMm.height].join('×'),
+  () => {
+    void nextTick(recomputeFit)
+    if (props.zoom !== 'fit') emit('update:zoom', 'fit')
+  },
+)
 
 // ---------------------------------------------------------------- the frame
 
@@ -377,7 +419,7 @@ function onFrameMessage(event: MessageEvent) {
   const d = event.data as { type?: string; locs?: string[]; target?: string[]; position?: 'before' | 'after' | 'inside'; width?: number; height?: number | null; dx?: number; dy?: number; alt?: boolean; styles?: Record<string, Record<string, string>> }
   const locs = (a?: string[]) => (a ?? []).map(toLoc)
   if (d?.type === 'select') emit('select', locs(d.locs))
-  else if (d?.type === 'sprint-computed') emit('computed-styles', d.styles ?? {})
+  else if (d?.type === 'pressed-computed') emit('computed-styles', d.styles ?? {})
   else if (d?.type === 'dblclick') emit('enter-scope', locs(d.locs))
   else if (d?.type === 'reorder') emit('reorder', { locs: locs(d.locs), target: locs(d.target), position: d.position! })
   else if (d?.type === 'resize') emit('resize', { locs: locs(d.locs), width: d.width!, height: d.height ?? null })
@@ -390,7 +432,7 @@ const key = (loc?: Loc | null) => (loc ? `${loc.start}:${loc.end}` : null)
 function pushState() {
   frame.value?.contentWindow?.postMessage(
     {
-      type: 'sprint-state',
+      type: 'pressed-state',
       sel: key(props.selectedLoc),
       match: props.matchedLocs.map((l) => key(l)),
       scope: props.scopeRange ? [props.scopeRange.start, props.scopeRange.end] : null,
@@ -411,7 +453,7 @@ watch(
 
 <template>
   <section class="pane">
-    <div ref="body" class="body dot-grid" @wheel="onWheel">
+    <div ref="body" class="body dot-grid" :class="{ pannable: clipped }" @wheel="onWheel">
       <div class="stage">
         <div class="sheet" :class="{ stale: state === 'error', empty }" :style="sheet">
           <img
@@ -440,32 +482,39 @@ watch(
       </div>
     </div>
 
-    <!-- Toolbar chips float 10px from the pane edges (SPEC §4.5); they never scroll away. -->
-    <div class="chips tl">
-      <ViewChip bordered :on="mode === 'rendered'" @click="emit('update:mode', 'rendered')">Rendered</ViewChip>
-      <ViewChip bordered :on="mode === 'raster'" @click="emit('update:mode', 'raster')">Raster 1-bit</ViewChip>
-      <ViewChip v-if="!row.total" static bordered mono muted>no data</ViewChip>
-      <ViewChip v-else static bordered mono class="chip step">
+    <!--
+      One toolbar row across the top of the pane (Label board's `.ptool`), 10px from both edges:
+      the view chips lead, the zoom cluster trails. It wraps rather than clips, so a narrow
+      Preview mount stacks the two clusters instead of hiding one under the other (F19).
+    -->
+    <div class="chips bar">
+      <Chip interactive sans :on="mode === 'rendered'" @click="emit('update:mode', 'rendered')">Rendered</Chip>
+      <Chip interactive sans :on="mode === 'raster'" @click="emit('update:mode', 'raster')">Raster 1-bit</Chip>
+      <!-- A state, not a toggle: borderless, with its dot (F/atlas 18). -->
+      <Chip v-if="!row.total" floating dot="off">no data</Chip>
+      <Chip v-else floating class="step">
         row {{ row.index + 1 }} / {{ row.total }}
         <button type="button" aria-label="previous row" @click="emit('step', -1)">‹</button>
         <button type="button" aria-label="next row" @click="emit('step', 1)">›</button>
-      </ViewChip>
-    </div>
+      </Chip>
 
-    <div class="chips tr">
-      <ViewChip bordered class="chip sq" aria-label="zoom out" @click="stepZoom(-0.5)">−</ViewChip>
+      <span class="grow" />
+      <!-- Never a silent crop: when the label runs past the canvas the pane says so and pans. -->
+      <Chip v-if="clipped" floating dot="warn">clipped</Chip>
+      <Chip interactive class="sq" aria-label="zoom out" @click="stepZoom(-0.5)">−</Chip>
       <span class="mono zoom">×{{ scale.toFixed(1) }}</span>
-      <ViewChip bordered class="chip sq" aria-label="zoom in" @click="stepZoom(0.5)">+</ViewChip>
-      <ViewChip bordered :on="zoom === 'fit'" @click="emit('update:zoom', 'fit')">Fit</ViewChip>
+      <Chip interactive class="sq" aria-label="zoom in" @click="stepZoom(0.5)">+</Chip>
+      <!-- Fit is an action, not a mode: it never keeps a ring (F21). -->
+      <Chip interactive sans title="fit the label in the canvas" @click="emit('update:zoom', 'fit')">Fit</Chip>
     </div>
 
     <!-- The footnote owns the bottom of the pane in the Preview; the Canvas gets the breadcrumb. -->
     <div v-if="crumbs.length && !footnote" class="chips bl">
-      <ViewChip static bordered mono class="chip crumb" :on="!!scopeRange">
+      <Chip floating class="crumb" :class="{ on: !!scopeRange }">
         <template v-for="(c, i) in crumbs" :key="i">
           <span v-if="i" class="sep"> › </span>{{ c.split(' ')[0] }}<span class="cls">{{ c.slice(c.split(' ')[0].length) }}</span>
         </template>
-      </ViewChip>
+      </Chip>
     </div>
   </section>
 </template>
@@ -485,12 +534,17 @@ watch(
   align-items: safe center;
   overflow: auto;
 }
+/* Clipped: the canvas is a thing you push around, and the cursor says so. */
+.body.pannable {
+  cursor: grab;
+}
+/* The 24px inset Fit reserves — the same number, in one place each side. */
 .stage {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 16px;
+  gap: 8px;
+  padding: 24px;
 }
 
 /* The sheet is white, always — the rendered label is never themed (invariant 3). Its edge
@@ -498,6 +552,10 @@ watch(
 .sheet {
   position: relative;
   overflow: hidden;
+  /* F22: content-box, so the sheet's *content* is exactly the label and the 1px edge is drawn
+     outside it. Border-box stole a pixel per side from the label and left the backdrop showing
+     past the raster (atlas 32 · 38). */
+  box-sizing: content-box;
   background: var(--sheet);
   border: 1px solid var(--sheet-border);
   box-shadow: var(--sheet-shadow);
@@ -514,10 +572,13 @@ watch(
   border: 0;
   transform-origin: 0 0;
 }
+/* Fills the sheet exactly — the raster and the label are the same millimetres, so `fill` is a
+   no-op on the aspect and a guarantee on the edges. */
 .raster {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
+  object-fit: fill;
   image-rendering: pixelated;
 }
 
@@ -540,12 +601,13 @@ watch(
   align-items: center;
   gap: 5px;
 }
-.tl { top: 10px; left: 10px }
-.tr { top: 10px; right: 10px }
+/* One row, both ends, wrapping — a group never clips (F19). */
+.bar { top: 10px; left: 10px; right: 10px; flex-wrap: wrap; row-gap: 5px; }
+.bar .grow { flex: 1 1 auto; min-width: 0; }
 .bl { bottom: 10px; left: 10px }
 
-/* The chip itself is `@/ui`'s ViewChip; these are this pane's variants of it. */
-.chip.sq {
+/* The chip itself is `@/ui`'s Chip; these are this pane's variants of it. */
+.sq {
   width: 22px;
   justify-content: center;
   padding: 0;
@@ -570,10 +632,10 @@ watch(
   color: var(--muted-foreground);
   opacity: 0.7;
 }
-.chip.crumb .cls {
+.crumb .cls {
   color: var(--accent-link);
 }
-.chip.crumb.on .cls {
+.crumb.on .cls {
   color: inherit;
   font-weight: 600;
 }

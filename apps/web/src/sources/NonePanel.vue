@@ -1,7 +1,7 @@
 <!-- No data at all: n copies of the template, each row just its own number. -->
 <script setup lang="ts">
 import { ref } from 'vue'
-import { noneSource } from '@sprint/core'
+import { noneSource } from '@pressed/core'
 import { Field, Labeled } from '@/ui'
 import type { Run } from './index'
 

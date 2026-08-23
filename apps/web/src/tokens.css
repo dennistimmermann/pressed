@@ -1,13 +1,9 @@
-/* Copy of docs/design/handoff-flat/spec/tokens.css ("Ink chrome, flat panes", mockup 2c), plus
-   the compatibility mappings the app and shadcn-vue still need — the handoff file omits every
-   shadcn name. Edit the handoff file, copy it here, keep the mappings below it.
-   This file no longer matches docs/design/spec/tokens.css: that one is the previous
-   (warm/oklch) pass and is superseded by the visual passes. See docs/design/deviations.md.
+/* Pressed — visual tokens, "Ink chrome, flat panes", harmonized (harmonize/Language board).
+   THIS FILE IS AUTHORITATIVE: the docs/design copies are retired (docs/design/deviations.md).
 
-   sprint — visual tokens, "Ink chrome, flat panes" (mockup 2c).
-   Light mode only: dark mode is deliberately out of scope for this pass (MIGRATION §7).
-   NOTE: these tokens are for the APP CHROME only. The rendered label document is always
-   black on white — never let a token reach the label CSS. */
+   There is no dark mode. The ink chrome (top bar, status foot) is a surface, not a theme —
+   nothing here ever flips. NOTE: these tokens are for the APP CHROME only. The rendered label
+   document is always black on white — never let a token reach the label CSS (invariant 3). */
 
 @theme {
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
@@ -85,7 +81,37 @@
   --destructive:         #e5484d;
   --warning:             #c99700;
 
-  /* ── radii — the two-step ladder (MIGRATION §5) ─────────────────────────── */
+  /* ── type ramp — seven steps, two families (Language board) ─────────────
+     T1 eyebrow   10px sans 600, .07em, uppercase — section + status headers
+     T2 microlabel 9px sans 450                   — field labels
+     T3 ui        11px sans                       — buttons, menus, hints, empty states
+     T4 strong    12px sans 600                   — active tab, dialog title
+     T5 value   10.5px mono                       — every machine value, fields, code
+     T6 meta      10px mono                       — counts, meta, status facts
+     T7 wordmark  16px mono 600                   — the logo only
+     The one rule: a measurement, count, id, path or payload is never sans; a sentence is
+     never mono (invariant 2). No size exists outside this ladder. */
+  --t1:                  10px;
+  --t2:                  9px;
+  --t3:                  11px;
+  --t4:                  12px;
+  --t5:                  10.5px;
+  --t6:                  10px;
+  --t7:                  16px;
+
+  /* ── fixed heights — a control is 25px everywhere, no exceptions ────────── */
+  --h-topbar:            52px;   /* the ink top bar */
+  --h-section:           34px;   /* scope row, pane section header */
+  --h-bar:               30px;   /* status bar, pane toolbar row */
+  --h-control:           25px;   /* every control: field, seg, ghost, add */
+  --h-list:              24px;   /* list row (28px table row) */
+  --w-rail:              28px;   /* a fully collapsed pane */
+
+  /* ── spacing — 2 · 4 · 6 · 8 · 12 · 16 · 24 ──────────────────────────────
+     2 inside a control · 4–6 between siblings · 8 label to field group ·
+     12 pane padding · 16 between sections' content · 24 canvas insets. */
+
+  /* ── radii — the three-step ladder; no other radius exists ──────────────── */
   --radius-trough:       10px;      /* troughs and popovers only */
   --radius-control:      6px;       /* everything inside a pane: tabs, rows, chips,
                                        pills, fields, buttons, dashed */
@@ -133,68 +159,6 @@
   --ok:                  oklch(0.62 0.15 150);
   --comp-bg:             oklch(0.955 0.012 300);
   --comp-fg:             oklch(0.42 0.07 300);
-}
-
-/* Dark mode is out of scope for this pass (MIGRATION §7): left as the previous pass had it,
-   with only the pointers at deleted names moved to the nearest surviving dark token. */
-.dark {
-  --background: oklch(0.19 0.008 60);
-  --foreground: oklch(0.93 0.004 90);
-  --pane: oklch(0.225 0.009 60);
-  --card-foreground: oklch(0.93 0.004 90);
-  --popover: oklch(0.245 0.010 60);
-  --popover-foreground: oklch(0.93 0.004 90);
-  --muted: oklch(0.26 0.010 60);
-  --muted-foreground: oklch(0.65 0.010 60);
-  --border: oklch(0.30 0.010 60);
-  --input: oklch(0.32 0.010 60);
-  --ring: oklch(0.68 0.16 40);
-  --primary: oklch(0.68 0.16 40);
-  --primary-foreground: oklch(0.15 0.02 40);
-  --secondary: oklch(0.26 0.010 60);
-  --secondary-foreground: oklch(0.90 0.004 90);
-  --accent: oklch(0.32 0.05 40);
-  --accent-foreground: oklch(0.92 0.02 40);
-  --accent-border: oklch(0.42 0.07 40);
-  --warning-bg: oklch(0.28 0.03 85);
-  --warning-border: oklch(0.38 0.05 85);
-  --warning-foreground: oklch(0.86 0.06 85);
-  --info-bg: oklch(0.28 0.02 220);
-  --info: oklch(0.72 0.08 220);
-  --grid-dot: oklch(0.28 0.010 60);
-  /* Dark keeps working for the names this pass added, without being tuned. */
-  --pane-border: oklch(0.30 0.010 60);
-  --splitter: oklch(0.19 0.008 60);
-  --splitter-grip: oklch(0.35 0.010 60);
-  --splitter-hover: oklch(0.26 0.010 60);
-  --canvas: oklch(0.205 0.008 60);
-  --canvas-dot: oklch(0.28 0.010 60);
-  --scope: oklch(0.225 0.009 60);
-  --scope-border: oklch(0.30 0.010 60);
-  --scope-well: oklch(0.26 0.010 60);
-  --scope-well-border: oklch(0.30 0.010 60);
-  --scope-foreground: oklch(0.93 0.004 90);
-  --scope-muted: oklch(0.65 0.010 60);
-  --scope-muted-2: oklch(0.70 0.010 60);
-  --scope-faint: oklch(0.62 0.010 60);
-  --scope-link: oklch(0.78 0.14 40);
-  --scope-destructive: oklch(0.70 0.16 25);
-  --section-border: oklch(0.30 0.010 60);
-  --hairline: oklch(0.28 0.010 60);
-  --field: oklch(0.26 0.010 60);
-  --field-border: oklch(0.32 0.010 60);
-  --dashed: oklch(0.35 0.010 60);
-  --muted-foreground-2: oklch(0.70 0.010 60);
-  --meta-foreground: oklch(0.62 0.010 60);
-  --faint-foreground: oklch(0.58 0.010 60);
-  --inherited-foreground: oklch(0.52 0.010 60);
-  --accent-link: oklch(0.78 0.14 40);
-  --row-hover: oklch(0.26 0.010 60);
-  --comp-bg: oklch(0.30 0.04 300);
-  --comp-fg: oklch(0.80 0.06 300);
-  --code-keyword: oklch(0.76 0.09 215);
-  --code-string: oklch(0.72 0.10 30);
-  --code-expression: oklch(0.78 0.13 40);
 }
 
 /* The two things the design needs that utilities don't give you. */

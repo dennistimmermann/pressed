@@ -23,33 +23,40 @@ const seg = <T extends string>(value: T, options: { value: T; icon?: string; lab
       <option value="Letter">Letter · 216 × 279</option>
     </select>
   </Labeled>
-  <Labeled label="count" cells>
-    <Field v-model="sheet.countH" :icon="ICON.cols" />
-    <Field v-model="sheet.countV" :icon="ICON.rows" />
+  <!-- F25: an icon and a number is not a label. The row says which number is which. -->
+  <Labeled label="count — across × down" cells>
+    <Field v-model="sheet.countH" :icon="ICON.cols" title="labels across the page" />
+    <Field v-model="sheet.countV" :icon="ICON.rows" title="labels down the page" />
   </Labeled>
-  <Labeled label="gap" cells>
-    <Field v-model="sheet.gapH" :icon="ICON.gapH" unit="mm" />
-    <Field v-model="sheet.gapV" :icon="ICON.gapV" unit="mm" />
+  <Labeled label="gap — across × down" cells>
+    <Field v-model="sheet.gapH" :icon="ICON.gapH" unit="mm" title="between columns" />
+    <Field v-model="sheet.gapV" :icon="ICON.gapV" unit="mm" title="between rows" />
   </Labeled>
-  <!-- Per-axis origin: a centered axis places itself; left/top axes get a margin field. -->
-  <Labeled label="origin" cells>
-    <Seg
-      :box="12"
-      :choices="seg(sheet.alignH, [
-        { value: 'left', icon: ICON.marginLeft, title: 'from the left margin' },
-        { value: 'center', icon: ICON.centerH, title: 'centered horizontally' },
-      ])"
-      @pick="sheet.alignH = $event as typeof sheet.alignH"
-    />
-    <Seg
-      :box="12"
-      :choices="seg(sheet.alignV, [
-        { value: 'top', icon: ICON.marginTop, title: 'from the top margin' },
-        { value: 'center', icon: ICON.centerV, title: 'centered vertically' },
-      ])"
-      @pick="sheet.alignV = $event as typeof sheet.alignV"
-    />
-  </Labeled>
+  <!-- Per-axis origin: two 2-way groups, each with the axis it turns — four unlabelled icons in
+       one strip said nothing about which pair was which (atlas 40). A centered axis places
+       itself; left/top axes get a margin field. -->
+  <div class="cells">
+    <Labeled label="origin — across">
+      <Seg
+        :box="12"
+        :choices="seg(sheet.alignH, [
+          { value: 'left', icon: ICON.marginLeft, title: 'from the left margin' },
+          { value: 'center', icon: ICON.centerH, title: 'centered horizontally' },
+        ])"
+        @pick="sheet.alignH = $event as typeof sheet.alignH"
+      />
+    </Labeled>
+    <Labeled label="down">
+      <Seg
+        :box="12"
+        :choices="seg(sheet.alignV, [
+          { value: 'top', icon: ICON.marginTop, title: 'from the top margin' },
+          { value: 'center', icon: ICON.centerV, title: 'centered vertically' },
+        ])"
+        @pick="sheet.alignV = $event as typeof sheet.alignV"
+      />
+    </Labeled>
+  </div>
   <Labeled v-if="sheet.alignV === 'top' || sheet.alignH === 'left'" label="margins" cells>
     <Field v-if="sheet.alignV === 'top'" v-model="sheet.marginTop" :icon="ICON.marginTop" unit="mm" />
     <Field v-if="sheet.alignH === 'left'" v-model="sheet.marginLeft" :icon="ICON.marginLeft" unit="mm" />
@@ -75,5 +82,6 @@ const seg = <T extends string>(value: T, options: { value: T; icon?: string; lab
 }
 .ctl:focus-visible { border-color: var(--primary); background: var(--pane); }
 
+.cells { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; min-width: 0; }
 .note { margin: 0; font-family: var(--font-mono); font-size: 10px; color: var(--meta-foreground); }
 </style>

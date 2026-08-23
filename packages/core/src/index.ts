@@ -1,4 +1,4 @@
-// @sprint/core — DOM-free: template compile/render, dither, TSPL, data sources.
+// @pressed/core — DOM-free: template compile/render, dither, TSPL, data sources.
 // Consumed as TypeScript source (no build step); browser-only and Node-only adapters
 // live in apps/*.
 

@@ -1,15 +1,20 @@
 <!-- A file off disk: the first row is the field names (core's `csvSource` does the parsing). -->
 <script setup lang="ts">
 import { ref } from 'vue'
-import { csvSource } from '@sprint/core'
+import { csvSource } from '@pressed/core'
 import { Field } from '@/ui'
+import { data } from '@/stores/data'
 import type { Run } from './index'
 
 const props = defineProps<{ run: Run; busy?: boolean }>()
-const name = ref('')
+/** Seeded from what is actually loaded: the panel is remounted every time the source row
+    changes, and a fresh `''` under rows that came from a file was the phantom in F7. */
+const name = ref(data.sourceId === 'csv' ? data.brief : '')
 
 function onCsv(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0]
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = '' // so choosing the same file again is still a change
   if (!file) return
   name.value = file.name
   props.run(async () => csvSource.load(await file.text()), file.name)

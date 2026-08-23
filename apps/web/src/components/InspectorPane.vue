@@ -60,7 +60,7 @@ const locator = computed(() => {
     :scope-name="editor.activeTab.scope"
     root-name="label"
     :collapsed="settings.inspectorCollapsed"
-    :empty-hint="kind === 'rule' ? 'pick a rule in Layers or put the caret in one' : 'pick an element in Layers or on the label'"
+    empty-hint="select an element or rule to edit it"
     @toggle="toggle"
     @add-class="addClassToElement"
     @ensure-selector="ensureSelector"

@@ -10,7 +10,7 @@ export type Output = {
   label: string
   /** The Output section's field rows — it reads and writes its own `settings.print` slice. */
   Settings: Component
-  /** The trough: what the job lands on. Props: `slots`, `page`, `pages`, `placeholder`. */
+  /** The trough: what the job lands on. Props: `slots`, `page`, `pages`, `empty`. */
   Preview: Component
   /** The Job section's cost line, split at the arrow — the tail carries the number. */
   plan: (print: PrintSettings, size: Size, labels: number) => [string, string]
