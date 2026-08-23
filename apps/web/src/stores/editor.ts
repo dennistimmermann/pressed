@@ -120,7 +120,7 @@ export const wiredPaths = computed(() => {
 export async function initEditor() {
   await refreshTemplates()
   // First run opens the bundled spool example (design §3.7).
-  const first = bundled.find((t) => t.id === 'Spool 50x30') ?? bundled[0]
+  const first = bundled.find((t) => t.id === 'Grocery 40x30') ?? bundled[0]
   load(findTemplate(settings.lastTemplateId)?.id ?? first.id)
 }
 

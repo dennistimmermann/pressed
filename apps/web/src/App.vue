@@ -6,6 +6,7 @@ import EditorView from './views/EditorView.vue'
 import PrinterView from './views/PrinterView.vue'
 import { data } from './stores/data'
 import { editor, initEditor, meta, save } from './stores/editor'
+import { seedExample } from './stores/data'
 import { plan, printSelected, printerBadge, refreshDevice } from './stores/printer'
 import { view, type View } from './stores/view'
 
@@ -38,6 +39,7 @@ function onKeydown(e: KeyboardEvent) {
 onMounted(() => {
   addEventListener('keydown', onKeydown)
   void initEditor()
+  void seedExample()
   void refreshDevice()
 })
 onUnmounted(() => removeEventListener('keydown', onKeydown))

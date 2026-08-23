@@ -33,6 +33,8 @@ const toggle = (s: Section) => { settings.dataCollapsed[s] = !settings.dataColla
 // ---------------------------------------------------------------- the source
 /** The source whose panel is open — not necessarily the one the rows in hand came from. */
 const tab = ref(data.sourceId)
+// A load moves the rail to the source that loaded (the boot seed lands after mount).
+watch(() => data.sourceId, (id) => (tab.value = id))
 const active = computed(() => SOURCES.find((s) => s.id === tab.value) ?? SOURCES[0])
 /** Collapsing always buys space: with every section shut the pane is a 28px rail and the table
     takes the width back (F8). Expanding a title restores the persisted width. */

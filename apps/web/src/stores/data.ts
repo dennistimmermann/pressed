@@ -1,4 +1,5 @@
 import { computed, reactive, toRaw } from 'vue'
+import groceriesCsv from '../../../../examples/groceries.csv?raw'
 import { applyMapping, rowTypeOf, suggestMappings } from '@pressed/core'
 import type { Row } from '@pressed/core'
 import { buildTree, type VarNode } from '@/editor/inspector/row-tree'
@@ -94,4 +95,14 @@ export function suggestUnmapped(neededPaths: string[]): string[] {
   const found = suggestMappings(neededPaths, fields)
   for (const [from, to] of Object.entries(found)) setMapping(from, to)
   return Object.keys(found)
+}
+
+/** Boot seed: the bundled grocery example, so a fresh visit shows the whole flow working —
+    rows in the table, the Grocery template's checklist all green — instead of empty panes. */
+export async function seedExample() {
+  if (data.rows.length) return
+  const { csvSource } = await import('@pressed/core')
+  const { rows, rowType } = await csvSource.load(groceriesCsv)
+  setRows('csv', rows, rowType)
+  data.brief = 'groceries.csv (example)'
 }
