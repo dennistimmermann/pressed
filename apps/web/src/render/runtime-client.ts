@@ -6,4 +6,5 @@ import { createRuntimeClient, type RuntimeClient } from '@/editor/runtime-client
  * Created on first use: the frame appends itself to <body>.
  */
 let client: RuntimeClient | null = null
-export const runtime = () => (client ??= createRuntimeClient('/runtime.html'))
+// BASE_URL-aware: on GitHub Pages the app lives under /<repo>/, not /.
+export const runtime = () => (client ??= createRuntimeClient(`${import.meta.env.BASE_URL}runtime.html`))

@@ -7,6 +7,8 @@ import tailwindcss from '@tailwindcss/vite'
 const dir = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
+  // GitHub Pages serves a project site under /<repo>/ — the deploy workflow sets PAGES_BASE.
+  base: process.env.PAGES_BASE ?? '/',
   plugins: [vue(), tailwindcss()],
   resolve: {
     alias: {
