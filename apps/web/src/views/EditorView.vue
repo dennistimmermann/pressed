@@ -22,18 +22,15 @@ import Splitter from '@/components/Splitter.vue'
 import { rasterDataUrl } from '@/render/raster'
 import {
   addBlock, can, canFor, canvasEnterScope, canvasReorder, canvasResize, canvasSelect, classTarget,
-  deleteRule, deleteSelected, dirty, duplicateSelected, editor, element, ensureSelector,
-  enterScope, erroredElements, filename, formatBlock, goToOffset, indentSelected, jumpTo, layerCount, layers,
-  leaveScope, load, matchedLocs, meta, insertables, insertText, moveSelected, outdentSelected, previewDocument,
-  previewState, renameRule, reparent, ruleAtCaret, runOnElement, save, saveAs, scopeRange,
+  deleteRule, deleteSelected, deleteTemplate, duplicateSelected, editor, element, ensureSelector,
+  enterScope, erroredElements, formatBlock, goToOffset, indentSelected, jumpTo, layerCount, layers,
+  leaveScope, matchedLocs, meta, insertables, insertText, moveSelected, outdentSelected, previewDocument,
+  previewState, renameRule, renameTemplate, reparent, requestLoad, ruleAtCaret, runOnElement, saveAsName, scopeRange,
   scopeRules, scriptInfo, selectElement, setComputedStyles, switchTab, tabs, wrapChoices,
 } from '@/stores/editor'
 import { data } from '@/stores/data'
 import { settings } from '@/stores/settings'
-import {
-  deleteTemplate, duplicateTemplate, exportTemplate, importTemplates,
-  newTemplate, renameTemplate, templateName,
-} from '@/stores/templates'
+import { duplicateTemplate, exportTemplate, importTemplates, newTemplate, templateName } from '@/stores/templates'
 import { allTemplates, ensureThumbnails, templateCards } from '@/stores/templateCards'
 
 // SPEC §3 E12: below 900 the three columns stack, Split is not offered and Layers is a select.
@@ -143,14 +140,18 @@ const elementName = computed(() => {
 
 // The raster view is the real 1-bit bitmap, so it only gets built when it is on screen.
 const rasterSrc = ref<string>()
+let rasterToken = 0
 watch(
   [() => settings.previewMode, () => editor.label, profile],
   async ([previewMode, label]) => {
+    const mine = ++rasterToken
     if (previewMode !== 'raster' || !label) return (rasterSrc.value = undefined)
     try {
-      rasterSrc.value = await rasterDataUrl(label, meta.value.size, profile.value, meta.value.margin ?? 0)
+      const url = await rasterDataUrl(label, meta.value.size, profile.value, meta.value.margin ?? 0)
+      if (mine !== rasterToken) return // a newer raster won
+      rasterSrc.value = url
     } catch {
-      rasterSrc.value = undefined // a raster failure must not take the preview down
+      if (mine === rasterToken) rasterSrc.value = undefined // a raster failure must not take the preview down
     }
   },
   { immediate: true },
@@ -304,34 +305,10 @@ async function confirmDelete() {
   if (id) await deleteTemplate(id)
 }
 
-/** Switching away from unsaved work asks first, and offers the third way out (design §4). */
-const pendingId = ref<string | null>(null)
-const saveAsName = ref<string | null>(null)
-
-function pick(id: string) {
-  if (id === editor.templateId) return
-  if (dirty.value) return (pendingId.value = id)
-  load(id)
-}
-
-function confirmDiscard() {
-  const id = pendingId.value
-  pendingId.value = null
-  if (id) load(id)
-}
-
-async function confirmSaveAs() {
-  const name = saveAsName.value?.trim()
-  if (!name) return
-  saveAsName.value = null
-  await saveAs(name)
-  confirmDiscard()
-}
-
 async function onCreate() {
   const record = await newTemplate()
   editor.manageOpen = false
-  pick(record.id)
+  requestLoad(record.id)
 }
 </script>
 
@@ -434,36 +411,10 @@ async function onCreate() {
          upward over the work area to at most 40% of the view. -->
     <StatusPane v-bind="statusProps" class="on-ink max-h-[40%] flex-none" />
 
-    <!-- Dirty confirm and save-as: inline, because a question is not an error dialog. -->
-    <div
-      v-if="pendingId || saveAsName !== null"
-      class="absolute top-[80px] left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-[var(--radius-trough)] border border-input bg-popover px-3 py-2 shadow-[var(--shadow-popover)]"
-    >
-      <template v-if="saveAsName !== null">
-        <label class="text-[12px]" for="save-as-name">Save current as</label>
-        <input
-          id="save-as-name" v-model="saveAsName" autofocus
-          class="h-[28px] w-[180px] rounded-[var(--radius-control)] border border-transparent bg-muted px-2 text-[12px] outline-none focus:border-primary focus:bg-card"
-          @keydown.enter="confirmSaveAs"
-        >
-        <button type="button" class="h-[28px] rounded-[var(--radius-control)] border border-input px-2 text-[12px] hover:bg-muted" @click="confirmSaveAs">Save</button>
-        <button type="button" class="text-[12px] text-muted-foreground hover:text-foreground" @click="saveAsName = null">Cancel</button>
-      </template>
-      <template v-else>
-        <span class="text-[12px]">{{ filename }} has unsaved changes.</span>
-        <button type="button" class="h-[28px] rounded-[var(--radius-control)] border border-input px-2 text-[12px] hover:bg-muted" @click="saveAsName = `${nameOf(editor.templateId)} copy`">
-          Save as new template…
-        </button>
-        <button type="button" class="h-[28px] rounded-[var(--radius-control)] border border-input px-2 text-[12px] hover:bg-muted" @click="save().then(confirmDiscard)">Save</button>
-        <button type="button" class="text-[12px] text-destructive hover:underline" @click="confirmDiscard">Discard</button>
-        <button type="button" class="text-[12px] text-muted-foreground hover:text-foreground" @click="pendingId = null">Cancel</button>
-      </template>
-    </div>
-
     <ManageTemplates
       :open="editor.manageOpen" :items="templateCards" :selected-id="editor.templateId"
       @close="editor.manageOpen = false"
-      @open="editor.manageOpen = false; pick($event)"
+      @open="editor.manageOpen = false; requestLoad($event)"
       @duplicate="duplicateTemplate"
       @rename="renameTemplate"
       @export="exportTemplate"

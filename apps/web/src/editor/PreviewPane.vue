@@ -414,16 +414,24 @@ const toLoc = (s: string): Loc => {
   return { start, end }
 }
 
+/** The frame runs template code: fields are checked, not cast (TEST-02). */
+const strings = (a: unknown): a is string[] => Array.isArray(a) && a.every((s) => typeof s === 'string')
+const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n)
+
 function onFrameMessage(event: MessageEvent) {
   if (event.source !== frame.value?.contentWindow) return
-  const d = event.data as { type?: string; locs?: string[]; target?: string[]; position?: 'before' | 'after' | 'inside'; width?: number; height?: number | null; dx?: number; dy?: number; alt?: boolean; styles?: Record<string, Record<string, string>> }
-  const locs = (a?: string[]) => (a ?? []).map(toLoc)
-  if (d?.type === 'select') emit('select', locs(d.locs))
-  else if (d?.type === 'pressed-computed') emit('computed-styles', d.styles ?? {})
-  else if (d?.type === 'dblclick') emit('enter-scope', locs(d.locs))
-  else if (d?.type === 'reorder') emit('reorder', { locs: locs(d.locs), target: locs(d.target), position: d.position! })
-  else if (d?.type === 'resize') emit('resize', { locs: locs(d.locs), width: d.width!, height: d.height ?? null })
-  else if (d?.type === 'wheel') onWheel({ deltaX: d.dx!, deltaY: d.dy!, alt: d.alt })
+  const d = event.data as { type?: string; locs?: unknown; target?: unknown; position?: unknown; width?: unknown; height?: unknown; dx?: unknown; dy?: unknown; alt?: unknown; styles?: unknown }
+  if (typeof d !== 'object' || d === null) return
+  const locs = (a: unknown) => (strings(a) ? a.map(toLoc) : [])
+  if (d.type === 'select') emit('select', locs(d.locs))
+  else if (d.type === 'pressed-computed') emit('computed-styles', typeof d.styles === 'object' && d.styles !== null ? d.styles as Record<string, Record<string, string>> : {})
+  else if (d.type === 'dblclick') emit('enter-scope', locs(d.locs))
+  else if (d.type === 'reorder' && (d.position === 'before' || d.position === 'after' || d.position === 'inside'))
+    emit('reorder', { locs: locs(d.locs), target: locs(d.target), position: d.position })
+  else if (d.type === 'resize' && finite(d.width))
+    emit('resize', { locs: locs(d.locs), width: d.width, height: finite(d.height) ? d.height : null })
+  else if (d.type === 'wheel' && finite(d.dx) && finite(d.dy))
+    onWheel({ deltaX: d.dx, deltaY: d.dy, alt: d.alt === true })
 }
 
 const key = (loc?: Loc | null) => (loc ? `${loc.start}:${loc.end}` : null)

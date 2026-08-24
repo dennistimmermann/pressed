@@ -11,6 +11,7 @@
 -->
 <script setup lang="ts">
 import { useTemplateRef, watch } from 'vue'
+import Button from './Button.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -35,7 +36,7 @@ watch(() => props.title, (title) => (title ? dialog.value?.showModal() : dialog.
     <h2 class="t">{{ title }}</h2>
     <p v-if="consequence" class="c">{{ consequence }}</p>
     <div class="foot">
-      <button type="button" class="ghost" @click="emit('cancel')">Cancel</button>
+      <Button style="--btn-h: 28px; font-size: 12px" @click="emit('cancel')">Cancel</Button>
       <button type="button" class="destr" @click="emit('confirm')">{{ confirmLabel }}</button>
     </div>
   </dialog>
@@ -51,13 +52,6 @@ watch(() => props.title, (title) => (title ? dialog.value?.showModal() : dialog.
 .t { margin: 0; font-family: var(--font-sans); font-size: 13px; font-weight: 600; }
 .c { margin: 6px 0 0; font-family: var(--font-sans); font-size: 11.5px; color: var(--muted-foreground); }
 .foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 14px; }
-.ghost {
-  height: 28px; padding: 0 10px; border: 1px solid var(--field-border);
-  border-radius: var(--radius-control); background: var(--pane);
-  font-family: var(--font-sans); font-size: 12px; color: var(--foreground);
-  transition: background-color 120ms ease-out;
-}
-.ghost:hover { background: var(--row-hover); }
 .destr {
   height: 28px; padding: 0 4px; border: 0; background: none;
   font-family: var(--font-sans); font-size: 12px; color: var(--destructive);

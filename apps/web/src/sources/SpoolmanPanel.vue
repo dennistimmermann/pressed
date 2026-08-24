@@ -23,21 +23,6 @@ const load = () => props.run(() => spoolmanSource.load(settings.spoolmanUrl), br
 </template>
 
 <style scoped>
-/* The 25px filled control, borderless until focus (DESIGN "Field anatomy"). */
-.ctl {
-  width: 100%; min-width: 0; height: 25px; padding: 0 7px; border: 1px solid transparent;
-  border-radius: var(--radius-control); background: var(--field); outline: none;
-  font-family: var(--font-mono); font-size: 10.5px; color: var(--foreground);
-  transition: background-color 120ms ease-out, border-color 120ms ease-out;
-}
-.ctl:focus-visible { border-color: var(--primary); background: var(--pane); }
-/* The ghost: 1px border, no fill — the only filled button in the app is Print (invariant 1). */
-.ghost {
-  height: 25px; flex: none; padding: 0 9px; border: 1px solid var(--field-border);
-  border-radius: var(--radius-control); background: var(--pane); font-size: 11px; color: var(--foreground);
-  transition: background-color 120ms ease-out;
-}
-.ghost:hover:not(:disabled) { background: var(--row-hover); }
-.ghost:disabled { opacity: 0.4; }
+/* `.ctl` and `.ghost` come from ui/controls.css (UI-03). */
 .note { min-width: 0; font-family: var(--font-mono); font-size: 10px; color: var(--meta-foreground); }
 </style>

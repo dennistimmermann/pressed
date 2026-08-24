@@ -6,17 +6,32 @@ export type Copies = number | { column: string }
 type Size = { width: number; height: number }
 
 /**
+ * A job larger than this is a mistake, not a print run — a price or id column bound as copies
+ * would otherwise freeze the tab expanding millions of entries before anyone can object.
+ */
+export const MAX_LABELS = 10_000
+
+/** Copies for one entry. ponytail: junk data prints one, never zero silently — a blank or
+    unparseable cell is not a decision to print nothing; an explicit 0 is. */
+function perRow<T extends object>(row: T, copies: Copies): number {
+  const cell = typeof copies === 'number' ? copies : (row as Record<string, unknown>)[copies.column]
+  const raw = cell === '' || cell == null ? NaN : Number(cell)
+  return Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : 1
+}
+
+/** Job size without materializing it — the plan (and the MAX_LABELS check) needs only the count. */
+export function countCopies<T extends object>(rows: T[], copies: Copies): number {
+  return rows.reduce((n, row) => n + perRow(row, copies), 0)
+}
+
+/**
  * Entry-major: every copy of entry 1, then every copy of entry 2 — a sheet of one label is the
  * odd case, a strip of *this* spool's labels is the normal one.
  */
 export function expandCopies<T extends object>(rows: T[], copies: Copies): T[] {
   const out: T[] = []
   for (const row of rows) {
-    const cell = typeof copies === 'number' ? copies : (row as Record<string, unknown>)[copies.column]
-    // ponytail: junk data prints one, never zero silently — a blank or unparseable cell is not
-    // a decision to print nothing; an explicit 0 is.
-    const raw = cell === '' || cell == null ? NaN : Number(cell)
-    const n = Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : 1
+    const n = perRow(row, copies)
     for (let i = 0; i < n; i++) out.push(row)
   }
   return out

@@ -8,14 +8,17 @@
 -->
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { getPath } from '@pressed/core'
 import { Chip, PaneRail, PaneSection, StatusBar, type StatusCell, Tabs } from '@/ui'
-import { ManageTemplates } from '@/editor'
+// Deep path, not the `@/editor` barrel: the barrel re-exports SfcEditor, and with it Monaco —
+// which must never ride into the Data view's chunk (PERF-01).
+import ManageTemplates from '@/editor/ManageTemplates.vue'
 import Splitter from '@/components/Splitter.vue'
 import DataMapping from '@/components/DataMapping.vue'
 import DataTable from '@/components/DataTable.vue'
 import { SOURCES, type Run } from '@/sources'
-import { data, selectAll, setRows, sourceFields , suggestUnmapped } from '@/stores/data'
-import { load as loadTemplate, editor, mappedState, meta, neededPaths, wiredPaths } from '@/stores/editor'
+import { data, mappedState, neededPaths, selectAll, setRows, sourceFields, suggestUnmapped, wiredPaths } from '@/stores/data'
+import { editor, meta, requestLoad } from '@/stores/editor'
 import { settings } from '@/stores/settings'
 import { ensureThumbnails, templateCards } from '@/stores/templateCards'
 
@@ -77,7 +80,7 @@ function openPicker() {
 }
 function pickTemplate(id: string) {
   pickOpen.value = false
-  loadTemplate(id)
+  requestLoad(id) // dirty editor buffers get the same confirm here as in the Editor view (COR-01)
 }
 
 /** F6: what the template still wants comes first — the satisfied paths sort to the bottom, so
@@ -119,12 +122,15 @@ const cells = computed<StatusCell[]>(() => {
 
 // ---------------------------------------------------------------- the rows
 const filter = ref('')
-/** Case-insensitive across everything a row says; the index rides along, selection is by index. */
+/** Case-insensitive across everything a row says — the flattened leaves, so a nested Spoolman
+    `filament.vendor.name` is searchable instead of stringifying to `[object Object]` (UI-02).
+    The index rides along, selection is by index. */
 const rows = computed(() => {
   const needle = filter.value.trim().toLowerCase()
+  const paths = sourceFields.value.map((f) => f.path)
   return data.rows
     .map((row, index) => ({ index, row }))
-    .filter(({ row }) => !needle || Object.values(row).some((v) => String(v).toLowerCase().includes(needle)))
+    .filter(({ row }) => !needle || paths.some((p) => String(getPath(row, p) ?? '').toLowerCase().includes(needle)))
 })
 const allSelected = computed(() => data.rows.length > 0 && data.selected.size === data.rows.length)
 
@@ -280,15 +286,9 @@ const sourceMeta = computed(() =>
 .srcrow.on .n { color: var(--accent-foreground); }
 
 /* The 25px filled control, borderless until focus — a Field's clothes on the dialog trigger. */
-.ctl {
-  display: flex; align-items: center; gap: 6px;
-  width: 100%; min-width: 0; height: 25px; padding: 0 7px; border: 1px solid transparent;
-  border-radius: var(--radius-control); background: var(--field); outline: none;
-  font-family: var(--font-mono); font-size: 10.5px; color: var(--foreground); text-align: left;
-  transition: background-color 120ms ease-out, border-color 120ms ease-out;
-}
+/* On top of ui/controls.css's `.ctl`: these are buttons wearing the field recipe. */
+.ctl { display: flex; align-items: center; gap: 6px; text-align: left; }
 .ctl:hover { background: var(--row-hover); }
-.ctl:focus-visible { border-color: var(--primary); background: var(--pane); }
 .ctl .v { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ctl .mm { flex: none; color: var(--meta-foreground); }
 .ctl .dd { flex: none; font-size: 7px; color: var(--meta-foreground); }
@@ -308,12 +308,5 @@ const sourceMeta = computed(() =>
 }
 .search::placeholder { color: var(--faint-foreground); }
 .search:focus-visible { border-color: var(--primary); background: var(--pane); }
-/* The ghost: 1px border, no fill — the only filled button in the app is Print (invariant 1). */
-.ghost {
-  height: 25px; flex: none; padding: 0 9px; border: 1px solid var(--field-border);
-  border-radius: var(--radius-control); background: var(--pane); font-size: 11px; color: var(--foreground);
-  transition: background-color 120ms ease-out;
-}
-.ghost:hover:not(:disabled) { background: var(--row-hover); }
-.ghost:disabled { opacity: 0.4; }
+/* `.ghost` comes from ui/controls.css (UI-03). */
 </style>

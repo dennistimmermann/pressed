@@ -7,8 +7,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getPath } from '@pressed/core'
 import { EmptyState, Picker, type PickerRow } from '@/ui'
-import { mappedPreviewRow, mapping, setMapping, sourceFields } from '@/stores/data'
-import { effectiveMapping, meta, neededPaths } from '@/stores/editor'
+import { effectiveMapping, mappedPreviewRow, mapping, neededPaths, setMapping, sourceFields } from '@/stores/data'
+import { meta } from '@/stores/editor'
 
 /** The menu offers `row.id`; a mapping stores what it sets on the row: `id`. */
 const rowPath = (path: string) => path.replace(/^row\./, '')

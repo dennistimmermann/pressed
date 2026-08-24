@@ -1,5 +1,5 @@
 import type { Component } from 'vue'
-import type { PrintSettings } from '@/stores/settings'
+import type { PrintSettings } from '@/printers/types'
 import { rollOutput } from './roll'
 import { sheetOutput } from './sheet'
 

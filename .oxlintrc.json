@@ -8,7 +8,6 @@
   "ignorePatterns": [
     "dist",
     "docs",
-    "apps/web/src/components/ui",
     "apps/web/src/templates",
     "spikes",
     "packages/renderer"

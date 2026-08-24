@@ -50,7 +50,8 @@ export const spoolmanSource: DataSource<string> = {
   id: 'spoolman',
   label: 'Spoolman',
   async load(baseUrl) {
-    const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/v1/spool`)
+    // A LAN host that routes but never answers would hang the Load button forever without this.
+    const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/v1/spool`, { signal: AbortSignal.timeout(10_000) })
     // CORS is the usual failure here: Spoolman must allow this origin.
     if (!res.ok) throw new Error(`HTTP ${res.status} from ${baseUrl}`)
     return { rows: (await res.json()) as Row[], rowType: SPOOL_ROW_TYPE }

@@ -1,0 +1,25 @@
+/*
+ * The two shared control recipes (UI-03) — global classes, because they dress native elements
+ * (<button>, <select>, <input>) whose semantic HTML should not be wrapped per use. Scoped
+ * variants in components override these by specificity where a surface genuinely differs
+ * (Field's focus-within recipe, PropertyEditor's 26px flavor, FileStrip's on-ink ghost).
+ */
+
+/* The ghost: 1px border, no fill — the only filled button in the app is Print (invariant 1). */
+.ghost {
+  display: inline-flex; align-items: center; height: 25px; flex: none; padding: 0 9px;
+  border: 1px solid var(--field-border); border-radius: var(--radius-control); background: var(--pane);
+  font-size: 11px; color: var(--foreground); cursor: pointer;
+  transition: background-color 120ms ease-out;
+}
+.ghost:hover:not(:disabled) { background: var(--row-hover); }
+.ghost:disabled { opacity: 0.4; cursor: default; }
+
+/* The field: filled, borderless, 25px — focus swaps the border to --primary and the fill to --pane. */
+.ctl {
+  width: 100%; min-width: 0; height: 25px; padding: 0 7px; border: 1px solid transparent;
+  border-radius: var(--radius-control); background: var(--field); outline: none;
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--foreground);
+  transition: background-color 120ms ease-out, border-color 120ms ease-out;
+}
+.ctl:focus-visible { border-color: var(--primary); background: var(--pane); }

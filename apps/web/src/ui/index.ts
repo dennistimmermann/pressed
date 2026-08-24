@@ -3,6 +3,7 @@
 // `tokens.css` alone, and a leaf of the dependency graph: it knows nothing of CSS rules,
 // millimetres, printers or labels.
 
+export { default as Button } from './Button.vue'
 export { default as PaneSection } from './PaneSection.vue'
 export { default as PaneRail } from './PaneRail.vue'
 export { default as Labeled } from './Labeled.vue'

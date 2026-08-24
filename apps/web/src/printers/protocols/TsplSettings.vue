@@ -5,9 +5,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Field, Labeled } from '@/ui'
-import { settings } from '@/stores/settings'
+import type { TsplConfig } from '../types'
 
-const tspl = settings.printer.tspl
+// The config arrives as a prop (the store's reactive slice, mutated in place) — protocol
+// settings panes are adapters and never read app stores themselves (ARC-03).
+const props = defineProps<{ cfg: TsplConfig }>()
+const tspl = props.cfg
 
 /** The head width in real millimetres — the number that decides whether a label fits. */
 const printableMm = computed(() => Math.round((tspl.maxDots / tspl.dpi) * 25.4 * 10) / 10)

@@ -13,7 +13,7 @@ import { debounce } from '@/editor/runtime-client.ts'
 import type { PrinterProfile } from '@pressed/core'
 import { Field, Labeled, PaneRail, PaneSection, Picker, type PickerRow, Seg, StatusBar, type StatusCell } from '@/ui'
 import Splitter from '@/components/Splitter.vue'
-import { expandCopies } from '@pressed/core'
+import { expandCopies, MAX_LABELS } from '@pressed/core'
 import { OUTPUTS } from '@/outputs'
 import { BACKENDS } from '@/printers'
 import { PROTOCOLS, protocolById } from '@/printers/protocols'
@@ -21,7 +21,7 @@ import { rasterDataUrl } from '@/render/raster'
 import { runtime } from '@/render/runtime-client'
 import { mappedPreviewRow, mappedSelectedRows } from '@/stores/data'
 import { editor, meta } from '@/stores/editor'
-import { connectDevice, plan, printSize, printer, refreshDevice } from '@/stores/printer'
+import { connectDevice, device, plan, printSize, printer, refreshDevice } from '@/stores/printer'
 import { settings } from '@/stores/settings'
 
 const print = settings.print
@@ -83,9 +83,12 @@ const output = computed(() => OUTPUTS.find((o) => o.id === print.output) ?? OUTP
 
 /** How many sets of the roll fit on screen before the strip fades out. */
 
-/** Print order as row indices — the same expansion the job itself gets. */
+/** Print order as row indices — the same expansion the job itself gets. Oversized jobs never
+    expand (COR-08): the plan already counted them, the status cell says why the trough is empty. */
 const sequence = computed(() =>
-  expandCopies(mappedSelectedRows.value.map((row, i) => ({ ...toRaw(row), _i: i })), print.copies).map((r) => r._i),
+  plan.value.oversized
+    ? []
+    : expandCopies(mappedSelectedRows.value.map((row, i) => ({ ...toRaw(row), _i: i })), print.copies).map((r) => r._i),
 )
 /** Sheet pages; the roll never pages — its preview scrolls the whole job instead. */
 const perPage = computed(() =>
@@ -143,14 +146,18 @@ const refreshThumbs = debounce(() => {
 /** With nothing selected there is still a template: render the preview row once so the
     Label thumb and the trough show the label, ghosted, instead of a blank page. */
 const placeholder = ref<string>()
+let placeholderToken = 0
 const refreshPlaceholder = debounce(() => {
+  const mine = ++placeholderToken
   void (async () => {
     try {
       const result = await runtime().render({
         source: editor.source, assets: toRaw(editor.assets), rows: [toRaw(mappedPreviewRow.value)], inspector: false,
       })
-      if (result.html[0] != null)
-        placeholder.value = await rasterDataUrl({ html: result.html[0], css: result.css }, meta.value.size, THUMB, meta.value.margin ?? 0)
+      if (result.html[0] == null) return
+      const url = await rasterDataUrl({ html: result.html[0], css: result.css }, meta.value.size, THUMB, meta.value.margin ?? 0)
+      if (mine !== placeholderToken) return // a newer render won
+      placeholder.value = url
     } catch { /* no placeholder is an empty slot, never an error banner */ }
   })()
 }, 150)
@@ -216,7 +223,8 @@ const bind = (column: string | null) => {
 const cells = computed<StatusCell[]>(() => {
   if (config.backend === 'browser') {
     const out: StatusCell[] = [{ k: 'printer', v: 'Browser Print' }]
-    if (empty.value) out.push({ v: 'no data' })
+    if (plan.value.oversized) out.push(oversizedCell.value)
+    else if (empty.value) out.push({ v: 'no data' })
     if (printer.busy) out.push({ v: 'printing…' })
     if (printer.lastPrint) out.push({ k: 'last', v: printer.lastPrint })
     if (printer.error) out.push({ v: printer.error, tone: 'error' })
@@ -225,16 +233,23 @@ const cells = computed<StatusCell[]>(() => {
   const out: StatusCell[] = [
     { k: 'printer', v: `${protocol.value.label} · ${config.tspl.dpi} dpi` },
     { k: 'density', v: String(config.tspl.density) },
-    printer.deviceStatus.claimed
-      ? { v: `● ${printer.deviceStatus.label}`, tone: 'ok' }
+    device.claimed
+      ? { v: `● ${device.label}`, tone: 'ok' }
       : { v: '○ not connected' },
   ]
-  if (empty.value) out.push({ v: 'no data' })
+  if (plan.value.oversized) out.push(oversizedCell.value)
+  else if (empty.value) out.push({ v: 'no data' })
   if (printer.busy) out.push({ v: 'printing…' })
   if (printer.lastPrint) out.push({ k: 'last', v: printer.lastPrint })
   if (printer.error) out.push({ v: printer.error, tone: 'error' })
   return out
 })
+
+/** COR-08: the plan refused to expand — say how big the job is and where the cap sits. */
+const oversizedCell = computed<StatusCell>(() => ({
+  v: `${plan.value.labels.toLocaleString()} labels — over the ${MAX_LABELS.toLocaleString()} cap; check the copies column`,
+  tone: 'error',
+}))
 
 onMounted(refreshDevice)
 </script>
@@ -309,23 +324,23 @@ onMounted(refreshDevice)
         @toggle="toggle('printer')"
       >
         <template v-if="config.backend === 'direct'" #meta>
-          <span class="font-mono text-[var(--t6)]" :class="printer.deviceStatus.claimed ? 'text-[var(--ok)]' : 'text-[var(--meta-foreground)]'">●</span>
+          <span class="font-mono text-[var(--t6)]" :class="device.claimed ? 'text-[var(--ok)]' : 'text-[var(--meta-foreground)]'">●</span>
         </template>
         <select v-model="printerChoice" class="ctl" aria-label="printer">
           <option v-for="o in printerOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
         </select>
         <p v-if="config.backend === 'browser'" class="note">prints through the system dialog — any inkjet or laser</p>
         <template v-else>
-          <component :is="protocol.Settings" />
+          <component :is="protocol.Settings" :cfg="config[protocol.id]" />
           <div class="flex items-center gap-2">
-            <span class="font-mono text-[10.5px]" :class="printer.deviceStatus.claimed ? 'text-[var(--ok)]' : 'text-[var(--meta-foreground)]'">
-              {{ printer.deviceStatus.claimed ? `● ${printer.deviceStatus.label}` : '○ not connected' }}
+            <span class="font-mono text-[10.5px]" :class="device.claimed ? 'text-[var(--ok)]' : 'text-[var(--meta-foreground)]'">
+              {{ device.claimed ? `● ${device.label}` : '○ not connected' }}
             </span>
             <button
               type="button"
               class="ml-auto h-[25px] flex-none rounded-[var(--radius-control)] border border-[var(--field-border)] px-[9px] text-[11px] transition-colors duration-[120ms] ease-out hover:bg-[var(--row-hover)]"
               @click="connectDevice"
-            >{{ printer.deviceStatus.claimed ? 'Change…' : 'Pick printer…' }}</button>
+            >{{ device.claimed ? 'Change…' : 'Pick printer…' }}</button>
           </div>
           <p class="note">power the printer on before plugging USB — it enumerates half-dead otherwise</p>
         </template>
@@ -387,14 +402,6 @@ onMounted(refreshDevice)
 /* The one scroller: the section headers stay put while the column moves under them. */
 .col { display: flex; flex: none; flex-direction: column; overflow-y: auto; background: var(--pane); }
 
-/* The 25px filled control, borderless until focus — what a `<select>` wears to match a Field. */
-.ctl {
-  width: 100%; min-width: 0; height: 25px; padding: 0 7px; border: 1px solid transparent;
-  border-radius: var(--radius-control); background: var(--field); outline: none;
-  font-family: var(--font-mono); font-size: 10.5px; color: var(--foreground);
-  transition: background-color 120ms ease-out, border-color 120ms ease-out;
-}
-.ctl:focus-visible { border-color: var(--primary); background: var(--pane); }
-
+/* `.ctl` comes from ui/controls.css (UI-03). */
 .note { margin: 0; font-family: var(--font-mono); font-size: 10px; color: var(--meta-foreground); }
 </style>

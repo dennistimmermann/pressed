@@ -4,6 +4,10 @@ import { defineConfig } from 'vitest/config'
 // `library/index.ts` reads its .vue files off disk rather than through Vite here — which is
 // why no plugin-vue and no `pressed` alias are needed to run the real compiler in a test.
 export default defineConfig({
+  resolve: {
+    // Mirror apps/web's `@` so store tests resolve; .vue imports stay unsupported (no plugin-vue).
+    alias: { '@': new URL('./apps/web/src', import.meta.url).pathname },
+  },
   test: {
     environment: 'node',
     // `packages/renderer` has no `src/**` in TypeScript — its src is the Rust crate.

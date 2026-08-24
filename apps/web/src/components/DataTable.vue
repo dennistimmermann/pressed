@@ -7,8 +7,7 @@
 import { computed, ref, watch } from 'vue'
 import { getPath, type Row } from '@pressed/core'
 import { EmptyState, Picker, type PickerRow } from '@/ui'
-import { data, mapping, mappedPreviewRow, setMapping, sourceFields, toggleSelected } from '@/stores/data'
-import { effectiveMapping, neededPaths } from '@/stores/editor'
+import { data, effectiveMapping, mapping, mappedPreviewRow, neededPaths, setMapping, sourceFields, toggleSelected } from '@/stores/data'
 
 withDefaults(
   defineProps<{
@@ -108,7 +107,13 @@ const canUnmap = computed(() => !!open.value && !!mapping.value[open.value])
           class="tr" :class="{ sel: data.selected.has(index), alt: i % 2 === 1 }" :style="{ gridTemplateColumns: template }"
           @click="toggleSelected(index)"
         >
-          <span class="cb" :class="{ on: data.selected.has(index) }" />
+          <!-- A real checkbox (UI-01): focusable, space toggles, screen readers see a state.
+               The row stays the big pointer target; stop keeps one click = one toggle. -->
+          <input
+            type="checkbox" class="cb" :checked="data.selected.has(index)"
+            :aria-label="`select row ${index + 1}`"
+            @click.stop @change="toggleSelected(index)"
+          >
           <span v-for="field in columns" :key="field.path" class="v">{{ cell(row, field.path) }}</span>
         </div>
         <EmptyState v-if="!rows.length" text="no row matches this filter" />
@@ -174,15 +179,18 @@ const canUnmap = computed(() => !!open.value && !!mapping.value[open.value])
 /* Suggest just wrote this one — a colour change, 120ms, nothing moves (invariant 6). */
 .hcell .m.flash { background: var(--accent); color: var(--accent-foreground); }
 
+/* A native input wearing the app's one checkbox recipe — appearance:none, same 12px box. */
 .cb {
-  width: 12px; height: 12px; margin-left: 4px; flex: none; position: relative;
+  appearance: none; width: 12px; height: 12px; margin: 0 0 0 4px; padding: 0; flex: none;
+  position: relative; cursor: pointer;
   border: 1px solid var(--field-border); border-radius: 3px; background: var(--pane);
 }
-.cb.on { background: var(--primary); border-color: var(--primary); }
-.cb.on::after {
+.cb:checked { background: var(--primary); border-color: var(--primary); }
+.cb:checked::after {
   content: "✓"; position: absolute; inset: 0; text-align: center;
   font-size: 9px; line-height: 12px; color: var(--primary-foreground);
 }
+.cb:focus-visible { outline: 1px solid var(--primary); outline-offset: 1px; }
 
 .grip {
   position: absolute; top: 0; right: 0; bottom: 0; width: 7px; cursor: col-resize;

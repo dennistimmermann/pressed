@@ -6,6 +6,27 @@ const sheet: SheetLayout = { format: 'A4', countH: 3, countV: 8, gapH: 7, gapV: 
 const roll: RollLayout = { across: 2, down: 2, marginH: 2, marginV: 1, gap: 3 }
 const labels = (n: number) => ({ html: Array.from({ length: n }, (_, i) => `<b>${i}</b>`), css: '.x{}' })
 
+describe('print CSP (SEC-01)', () => {
+  const CSP = 'http-equiv="Content-Security-Policy"'
+
+  it('print documents carry the CSP meta', () => {
+    expect(sheetDocument(labels(1), size, sheet)).toContain(CSP)
+    expect(labelDocument(labels(1), size, true)).toContain(CSP)
+  })
+
+  it('preview and raster documents do not — the inspector script must run there', () => {
+    expect(labelDocument(labels(1), size)).not.toContain(CSP)
+    expect(labelDocument(labels(1), size, false)).not.toContain(CSP)
+  })
+
+  it('the policy allows no network sources', () => {
+    const doc = labelDocument(labels(1), size, true)
+    const content = /Content-Security-Policy" content="([^"]+)"/.exec(doc)![1]
+    expect(content).toContain("default-src 'none'")
+    expect(content).not.toMatch(/https?:/)
+  })
+})
+
 describe('sheetDocument', () => {
   it('sets @page to the paper, not the label', () => {
     const doc = sheetDocument(labels(1), size, sheet)

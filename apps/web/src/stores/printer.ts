@@ -1,18 +1,21 @@
 import { computed, reactive, toRaw, watch } from 'vue'
-import { isWarning } from '@pressed/core'
-import { runtime } from '@/render/runtime-client'
+import { rotatedSize } from '@pressed/core'
 import { backendById } from '../printers'
 import { protocolById } from '../printers/protocols'
-import { expandCopies, rollFit, rotatedSize, sheetFit } from '@pressed/core'
+import { planJob } from '../printers/plan'
+import { renderPrintLabels } from '../printers/render'
+import { connectDevice as pickDevice, device, refreshDevice } from '../printers/device'
 import { editor, meta } from './editor'
 import { mappedSelectedRows } from './data'
 import { settings } from './settings'
 
-export type DeviceStatus = { claimed: boolean; label: string }
+// The store is the coordinator (ARC-03): planning is `printers/plan`, rendering is
+// `printers/render`, the device is `printers/device` — here lives only user-facing status
+// and the wiring between them.
+
+export { device, refreshDevice }
 
 export const printer = reactive({
-  /** Free-text status shown next to the Printer tab's dot (design §2). */
-  deviceStatus: { claimed: false, label: 'no device' } as DeviceStatus,
   busy: false,
   /** Inline, never a toast (invariant 5): shown in the Printer view. */
   error: null as string | null,
@@ -23,7 +26,7 @@ export const printer = reactive({
 export const printerBadge = computed(() =>
   settings.printer.backend === 'browser'
     ? 'Browser Print'
-    : `Direct · ${protocolById(settings.printer.protocol).label} · ${printer.deviceStatus.claimed ? printer.deviceStatus.label : 'not connected'}`,
+    : `Direct · ${protocolById(settings.printer.protocol).label} · ${device.claimed ? device.label : 'not connected'}`,
 )
 
 /**
@@ -39,61 +42,35 @@ watch(() => settings.printer.backend, (b) => { settings.print.output = b === 'br
 export const printSize = computed(() => rotatedSize(meta.value.size, settings.print.rotation))
 
 /** How many labels the job is, and what that costs in sheets or roll — the Job section. */
-export const plan = computed(() => {
-  const entries = mappedSelectedRows.value
-  const labels = expandCopies(entries.map(toRaw), settings.print.copies).length
-  const sheet = sheetFit(settings.print.sheet, printSize.value)
-  const roll = rollFit(settings.print.roll, printSize.value)
-  return { entries: entries.length, labels, sheet, roll }
-})
+export const plan = computed(() => planJob(mappedSelectedRows.value.map(toRaw), printSize.value, settings.print))
 
-/** Devices the user already granted us; no prompt, so it is safe to call on mount. */
-export async function refreshDevice() {
-  if (!navigator.usb) return (printer.deviceStatus = { claimed: false, label: 'no WebUSB' })
-  const [device] = await navigator.usb.getDevices()
-  printer.deviceStatus = device
-    ? { claimed: true, label: device.productName || 'USB printer' }
-    : { claimed: false, label: 'no device' }
-}
-
-/** The chooser — a user gesture is required, so this can only come from a click. */
+/** The chooser, with its failure put where errors belong: the Printer view's status line. */
 export async function connectDevice() {
   printer.error = null
   try {
-    await navigator.usb.requestDevice({ filters: [{ classCode: 7 }] })
-    await refreshDevice()
+    await pickDevice()
   } catch (e) {
     printer.error = describe(e)
   }
 }
 
-/**
- * Print every selected row: one render of all rows through the runtime frame (no `data-loc`,
- * it must never reach paper), then the backend turns them into pages or dots.
- */
+/** Print every selected row; the backend turns the rendered labels into pages or dots. */
 export async function printSelected() {
   const rows = mappedSelectedRows.value
-  if (!rows.length || printer.busy) return
+  if (!rows.length || printer.busy || plan.value.oversized) return
   printer.busy = true
   printer.error = null
   printer.lastPrint = null
   try {
     // `toRaw`: a Vue proxy cannot be structured-cloned through postMessage.
-    const result = await runtime().render({ source: editor.source, assets: toRaw(editor.assets), rows: rows.map(toRaw), inspector: false })
-    const fatal = result.errors.filter((e) => !isWarning(e))
-    if (fatal.length) throw new Error(`${fatal[0].file}: ${fatal[0].message}`)
-    // Pair each row with its render *before* expanding, so a column-bound copy count is read
-    // off the row it belongs to.
-    const paired = rows.map((row, i) => ({ ...toRaw(row), _label: { html: result.html[i], css: result.css } }))
-    const labels = expandCopies(paired, settings.print.copies).map((p) => p._label)
-
+    const labels = await renderPrintLabels(editor.source, toRaw(editor.assets), rows.map(toRaw), settings.print.copies)
     const { output, sheet, roll, rotation } = settings.print
     const backend = backendById(settings.printer.backend)
-    await backend.print({ labels, size: meta.value.size, margin: meta.value.margin ?? 0, output, sheet, roll, rotation })
-    const sheets = sheetFit(sheet, printSize.value).sheets(labels.length)
+    await backend.print({ labels, size: meta.value.size, margin: meta.value.margin ?? 0, output, sheet, roll, rotation }, settings.printer)
+    const sheets = plan.value.sheet.sheets(labels.length)
     const cost = output === 'sheet'
       ? `${sheets} sheet${sheets === 1 ? '' : 's'}`
-      : `${rollFit(roll, printSize.value).sets(labels.length)} sets`
+      : `${plan.value.roll.sets(labels.length)} sets`
     printer.lastPrint = `sent ${labels.length} label${labels.length === 1 ? '' : 's'} · ${cost} to ${backend.label}`
   } catch (e) {
     printer.error = describe(e)

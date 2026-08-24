@@ -17,8 +17,14 @@ export type { SubsetConfig, ElementRule } from './subset'
 
 // Imposition: how many labels land on a sheet or a roll. Pure millimetre maths — the
 // spoolserver prints sheets too, so it lives here rather than in the web app.
-export { expandCopies, sheetFit, rollFit } from './imposition'
+export { countCopies, expandCopies, MAX_LABELS, sheetFit, rollFit } from './imposition'
 export type { Copies } from './imposition'
+
+// The variables/mapping tree over a row type + example row. Parses the type text `rowTypeOf`
+// emits, so it lives beside it — and the web app's data domain reads it without reaching into
+// editor internals (ARC-02).
+export { buildTree, flatten } from './template/row-tree'
+export type { VarNode } from './template/row-tree'
 
 export type { DataSource } from './sources/types'
 export { csvSource, parseCsv, csvRowType } from './sources/csv'

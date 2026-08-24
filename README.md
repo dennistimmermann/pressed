@@ -100,8 +100,9 @@ millimetres:
 `row` is the current row, straight from your data source — available in the markup, and via
 `import { useRow } from 'pressed'` in `<script setup>`. `<snippet>` blocks are components you
 define in the same file. Four come built in: **`QrCode`**, **`Barcode`** (Code 128),
-**`Img`** and **`Fit`**. Images you bundle with the template are referenced as `asset:name`
-and become data URLs at render time.
+**`Img`** and **`Fit`** (experimental — clips to its box; shrink-to-fit is not implemented yet).
+Images you bundle with the template are referenced as `asset:name` and become data URLs at
+render time.
 
 Templates render once, to static HTML. Lifecycle hooks, timers and browser APIs raise a purity
 warning — the label still renders, but a template that needs a running clock is a template

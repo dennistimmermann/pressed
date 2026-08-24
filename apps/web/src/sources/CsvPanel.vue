@@ -35,15 +35,8 @@ function onCsv(event: Event) {
 </template>
 
 <style scoped>
-/* The ghost: 1px border, no fill — the only filled button in the app is Print (invariant 1).
-   A label, not a button: it is what opens the file input without a second click. */
-.ghost {
-  display: inline-flex; align-items: center; height: 25px; flex: none; padding: 0 9px;
-  border: 1px solid var(--field-border); border-radius: var(--radius-control); background: var(--pane);
-  font-size: 11px; color: var(--foreground); cursor: pointer;
-  transition: background-color 120ms ease-out;
-}
-.ghost:hover { background: var(--row-hover); }
+/* `.ghost` comes from ui/controls.css (UI-03) — here it dresses a label, which is what opens
+   the file input without a second click. */
 .ghost input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .note { min-width: 0; font-family: var(--font-mono); font-size: 10px; color: var(--meta-foreground); }
 </style>

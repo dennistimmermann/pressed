@@ -2,9 +2,8 @@ import { encodeTspl, toBits } from '@pressed/core/raster/dither.ts'
 import { setDocument } from '@pressed/core/template/label.ts'
 import { parseStatus, STATUS_REQUEST } from '@pressed/core/tspl/tspl.ts'
 import { rasterize, stripDataLoc } from '@/render/raster'
-import type { TsplConfig } from '@/stores/settings'
 import { openUsbPrinter } from '../webusb'
-import type { PrintJob } from '../types'
+import type { PrintJob, TsplConfig } from '../types'
 import TsplSettings from './TsplSettings.vue'
 
 /** The config as the raster path wants it: `gapMm` is the job's, not the protocol's. */

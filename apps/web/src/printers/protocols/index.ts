@@ -1,6 +1,5 @@
 import type { Component } from 'vue'
-import type { PrinterSettings, TsplConfig } from '@/stores/settings'
-import type { PrintJob } from '../types'
+import type { PrinterSettings, PrintJob, TsplConfig } from '../types'
 import { tsplProtocol } from './tspl'
 
 /**

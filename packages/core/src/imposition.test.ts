@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { RollLayout, SheetLayout } from './template/label'
 import { rotatedSize } from './template/label'
-import { expandCopies, rollFit, sheetFit } from './imposition'
+import { countCopies, expandCopies, MAX_LABELS, rollFit, sheetFit } from './imposition'
 
 const sheet: SheetLayout = { format: 'A4', countH: 3, countV: 8, gapH: 7, gapV: 5, alignH: 'left', alignV: 'top', marginTop: 12, marginLeft: 15 }
 const roll: RollLayout = { across: 2, down: 1, marginH: 2, marginV: 1, gap: 2 }
@@ -24,6 +24,19 @@ describe('expandCopies', () => {
     expect(expandCopies([{ qty: 0 }], { column: 'qty' })).toHaveLength(0)
     expect(expandCopies([{ qty: 2.7 }], { column: 'qty' })).toHaveLength(2)
     expect(expandCopies([{ qty: -4 }], { column: 'qty' })).toHaveLength(0)
+  })
+})
+
+describe('countCopies (COR-08)', () => {
+  it('counts exactly what expandCopies would materialize', () => {
+    const rows = [{ qty: '3' }, { qty: 'x' }, { qty: 0 }, { qty: null }, { qty: 2.7 }]
+    expect(countCopies(rows, { column: 'qty' })).toBe(expandCopies(rows, { column: 'qty' }).length)
+    expect(countCopies(rows, 2)).toBe(rows.length * 2)
+  })
+
+  it('counts a tab-freezing job without allocating it', () => {
+    // A price column bound as copies: the count is instant, nothing is materialized.
+    expect(countCopies([{ price: 1_000_000_000 }], { column: 'price' })).toBeGreaterThan(MAX_LABELS)
   })
 })
 

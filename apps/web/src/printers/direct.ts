@@ -1,4 +1,3 @@
-import { settings } from '@/stores/settings'
 import { protocolById } from './protocols'
 import type { Printer } from './types'
 
@@ -6,8 +5,8 @@ import type { Printer } from './types'
 export const directPrinter: Printer = {
   id: 'direct',
   label: 'Direct',
-  print(job) {
-    const protocol = protocolById(settings.printer.protocol)
-    return protocol.print(job, settings.printer[protocol.id])
+  print(job, ctx) {
+    const protocol = protocolById(ctx.protocol)
+    return protocol.print(job, ctx[protocol.id])
   },
 }

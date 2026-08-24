@@ -1,6 +1,5 @@
 @import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn-vue/tailwind.css";
+@import "./ui/controls.css";
 
 /* IBM Plex Sans for prose, IBM Plex Mono for everything the machine owns (design §1).
    Weight 450 is specified but @fontsource ships no 450 file, so 400/500/600 it is. */

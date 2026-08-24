@@ -122,9 +122,15 @@ const groups = computed(() =>
     .filter((g) => g.items.length),
 )
 
+/** Files the picker let through but the importer would silently drop — named instead (COR-07). */
+const skipped = ref<string[]>([])
+
 function onImport(e: Event) {
   const input = e.target as HTMLInputElement
-  if (input.files?.length) emit('import', [...input.files])
+  const files = [...(input.files ?? [])]
+  skipped.value = files.filter((f) => !f.name.endsWith('.vue')).map((f) => f.name)
+  const usable = files.filter((f) => f.name.endsWith('.vue'))
+  if (usable.length) emit('import', usable)
   input.value = '' // so importing the same file twice still fires
 }
 
@@ -156,8 +162,8 @@ function commitRename(id: string, e: Event) {
         <template v-if="!pick">
           <!-- Ghost, not filled: Print is the only filled button in the app (invariant 1). -->
           <label class="flex h-8 cursor-pointer items-center rounded-[var(--radius-control)] border border-input px-2.5 text-[12px] hover:bg-muted">
-            Import .vue / .zip
-            <input type="file" accept=".vue,.zip" multiple class="sr-only" @change="onImport">
+            Import .vue
+            <input type="file" accept=".vue" multiple class="sr-only" @change="onImport">
           </label>
           <button type="button" class="h-8 rounded-[var(--radius-control)] border border-input px-2.5 text-[12px] hover:bg-muted" @click="emit('create')">
             New template
@@ -167,6 +173,10 @@ function commitRename(id: string, e: Event) {
           ✕
         </button>
       </header>
+
+      <p v-if="skipped.length" class="border-b border-[var(--section-border)] px-3 py-1.5 text-[11px] text-muted-foreground">
+        skipped (only .vue imports): <span class="font-mono">{{ skipped.join(', ') }}</span>
+      </p>
 
       <div class="flex min-h-0 flex-1">
         <nav class="flex w-[176px] flex-none flex-col gap-px overflow-y-auto border-r border-[var(--section-border)] p-2" aria-label="Filter">

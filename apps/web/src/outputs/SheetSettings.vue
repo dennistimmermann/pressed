@@ -73,15 +73,7 @@ const seg = <T extends string>(value: T, options: { value: T; icon?: string; lab
 </template>
 
 <style scoped>
-/* The 25px filled control, borderless until focus — what a `<select>` wears to match a Field. */
-.ctl {
-  width: 100%; min-width: 0; height: 25px; padding: 0 7px; border: 1px solid transparent;
-  border-radius: var(--radius-control); background: var(--field); outline: none;
-  font-family: var(--font-mono); font-size: 10.5px; color: var(--foreground);
-  transition: background-color 120ms ease-out, border-color 120ms ease-out;
-}
-.ctl:focus-visible { border-color: var(--primary); background: var(--pane); }
-
+/* `.ctl` comes from ui/controls.css (UI-03). */
 .cells { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; min-width: 0; }
 .note { margin: 0; font-family: var(--font-mono); font-size: 10px; color: var(--meta-foreground); }
 </style>

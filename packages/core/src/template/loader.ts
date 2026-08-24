@@ -52,6 +52,7 @@ export function parseTemplate(source: string): ParsedTemplate {
   for (const e of parseErrors) errors.push(toMessage(e, 'main'))
 
   const snippets: ParsedSnippet[] = []
+  const seen = new Set<string>()
 
   const { meta, error: metaError } = parseMeta(source)
   if (metaError) errors.push({ kind: 'compile', ...metaError, file: 'main' })
@@ -68,6 +69,13 @@ export function parseTemplate(source: string): ParsedTemplate {
         errors.push({ kind: 'compile', message: `snippet "${name}" clashes with the library component of the same name`, file: 'main', line: block.loc.start.line })
         continue
       }
+      // Components, tabs and virtual models are all keyed by name: a repeat would silently
+      // overwrite the first definition, so every duplicate after the first is fatal.
+      if (seen.has(name)) {
+        errors.push({ kind: 'compile', message: `snippet "${name}" is defined twice — snippet names must be unique`, file: 'main', line: block.loc.start.line })
+        continue
+      }
+      seen.add(name)
       if (/<snippet[\s>]/.test(block.content)) {
         errors.push({ kind: 'compile', message: `snippet "${name}" contains a nested <snippet> — snippets may not nest`, file, line: 1 })
         continue

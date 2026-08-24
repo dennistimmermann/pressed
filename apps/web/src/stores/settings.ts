@@ -1,41 +1,33 @@
 import { reactive, watch } from 'vue'
+import { debounce } from '@/editor/runtime-client.ts'
 import type { EditorMode, TabRef } from '@/editor'
-import type { RollLayout, Rotation, SheetLayout } from '@pressed/core'
-import type { Copies } from '@pressed/core'
 
-/** A reactive object mirrored into localStorage. Plain modules, no Pinia — there is one app. */
+/** A reactive object mirrored into localStorage. Plain modules, no Pinia — there is one app.
+    The write is debounced (a splitter drag mutates on every pointer-move) and shielded — a
+    quota or privacy-mode failure loses persistence, never the session. */
 export function persisted<T extends object>(key: string, initial: T): T {
   let stored: Partial<T> = {}
   try { stored = JSON.parse(localStorage.getItem(key) ?? '{}') as Partial<T> } catch { /* corrupt entry: start over */ }
   const state = reactive({ ...initial, ...stored }) as T
-  watch(state, () => localStorage.setItem(key, JSON.stringify(state)), { deep: true })
+  const write = debounce(() => {
+    try { localStorage.setItem(key, JSON.stringify(state)) } catch { /* not persisted this session */ }
+  }, 150)
+  watch(state, write, { deep: true })
   return state
 }
 
-/** Everything TSPL has to be told: the head (dpi, printable dots) and the burn (density, speed).
-    `speed` null = leave the printer's own default. Defaults below are a ChiTenk K30F, measured. */
-export type TsplConfig = { dpi: number; maxDots: number; density: number; speed: number | null }
+// The print domain's config shapes moved to `@/printers/types` (ARC-03); re-exported here so
+// existing importers keep working — the store persists them, the domain defines them.
+import type { PrinterSettings, PrintSettings } from '@/printers/types'
+export type { PrinterConfig, PrinterSettings, PrintSettings, TsplConfig } from '@/printers/types'
 
-/** Which backend prints, and — for the direct one — over which protocol, configured how. */
-export type PrinterSettings = { backend: 'browser' | 'direct'; protocol: 'tspl'; tspl: TsplConfig }
-
-/** A function, not a const: both call sites need their own object to mutate. */
+/** A function, not a const: both call sites need their own object to mutate.
+    TSPL defaults are a ChiTenk K30F, measured. */
 const defaultPrinter = (): PrinterSettings => ({
   backend: 'browser',
   protocol: 'tspl',
   tspl: { dpi: 203, maxDots: 576, density: 8, speed: null },
 })
-
-/** How a job is imposed: the chosen output and the layout of every one of them. */
-export type PrintSettings = {
-  output: 'sheet' | 'roll'
-  sheet: SheetLayout
-  roll: RollLayout
-  copies: Copies
-  /** How the label sits on the medium — imposition, shared by both outputs (a wide label on a
-      narrow roll is the reason it exists). The template never sees it. */
-  rotation: Rotation
-}
 
 export type Settings = {
   printer: PrinterSettings
@@ -112,18 +104,22 @@ export const settings = persisted<Settings>('pressed.settings', {
 })
 
 /**
- * F10: a pane width restored from storage is clamped to the minimum its Splitter would allow.
- * A stored `0` — what dragging a splitter shut used to write — made the pane invisible with no
- * way back (atlas 11); collapsing is what the section chevrons and the 28px rail are for.
+ * One normalize pass over whatever storage held. Still developing: no versions, no ordered
+ * migrations — a stored shape too old to recognize is simply reset to its default. Every new
+ * shape check lands here, not as another loose statement.
  */
-const MIN_WIDTH = { layersWidth: 180, inspectorWidth: 300, dataWidth: 200, printerWidth: 240 } as const
-for (const [key, min] of Object.entries(MIN_WIDTH) as [keyof typeof MIN_WIDTH, number][])
-  settings[key] = Math.max(min, settings[key] || min)
-
-// Still developing: no migrations — a stored sheet from an older shape is simply reset.
-if (!('backend' in settings.printer)) settings.printer = defaultPrinter()
-if (!('printer' in settings.printerCollapsed))
-  settings.printerCollapsed = { label: false, output: false, printer: false, copies: false }
-settings.print.rotation ??= 0
-if (!('alignH' in settings.print.sheet))
-  settings.print.sheet = { format: 'A4', countH: 3, countV: 8, gapH: 7, gapV: 5, alignH: 'center', alignV: 'center', marginTop: 10, marginLeft: 10 }
+function normalize(s: Settings) {
+  // F10: a pane width restored from storage is clamped to the minimum its Splitter would allow.
+  // A stored `0` — what dragging a splitter shut used to write — made the pane invisible with no
+  // way back (atlas 11); collapsing is what the section chevrons and the 28px rail are for.
+  const MIN_WIDTH = { layersWidth: 180, inspectorWidth: 300, dataWidth: 200, printerWidth: 240 } as const
+  for (const [key, min] of Object.entries(MIN_WIDTH) as [keyof typeof MIN_WIDTH, number][])
+    s[key] = Math.max(min, s[key] || min)
+  if (!('backend' in s.printer)) s.printer = defaultPrinter()
+  if (!('printer' in s.printerCollapsed))
+    s.printerCollapsed = { label: false, output: false, printer: false, copies: false }
+  s.print.rotation ??= 0
+  if (!('alignH' in s.print.sheet))
+    s.print.sheet = { format: 'A4', countH: 3, countV: 8, gapH: 7, gapV: 5, alignH: 'center', alignV: 'center', marginTop: 10, marginLeft: 10 }
+}
+normalize(settings)

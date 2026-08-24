@@ -24,6 +24,25 @@ test('<meta> is parsed, and defaults fill the gaps', () => {
   expect(broken.errors[0].message).toMatch(/<meta> is not valid JSON/)
 })
 
+test('<meta> numbers are validated, not just parsed (COR-09)', () => {
+  const cases: [string, RegExp][] = [
+    ['{ "size": { "width": "60", "height": 40 } }', /size\.width must be a positive number/],
+    ['{ "size": { "width": -5, "height": 40 } }', /size\.width/],
+    ['{ "size": { "width": 60, "height": 0 } }', /size\.height/],
+    ['{ "size": { "width": 60, "height": null } }', /size\.height/],
+    ['{ "size": { "width": 60, "height": 40 }, "margin": -1 }', /margin must be a non-negative number/],
+  ]
+  for (const [json, message] of cases) {
+    const { meta, errors } = parseTemplate(`<meta>${json}</meta>\n<template><i/></template>`)
+    expect(errors[0]?.message, json).toMatch(message)
+    expect(meta.size, json).toEqual({ width: 50, height: 30 }) // defaults, never NaN geometry
+  }
+  // margin 0 and honest numbers stay untouched
+  const ok = parseTemplate('<meta>{ "size": { "width": 60, "height": 40 }, "margin": 0 }</meta>\n<template><i/></template>')
+  expect(ok.errors).toEqual([])
+  expect(ok.meta.margin).toBe(0)
+})
+
 test('shorthand snippet: body is the template, props="…" are string props', async () => {
   const compiled = compileTemplate(`
 <snippet name="badge" props="text">
@@ -57,6 +76,14 @@ test('full snippet: <script setup> + scoped <style>', async () => {
 test('a snippet may not take a library component name', () => {
   const { errors } = parseTemplate('<snippet name="QrCode"><i/></snippet><template><i/></template>')
   expect(errors[0].message).toMatch(/clashes with the library component/)
+})
+
+test('duplicate snippet names are fatal — the second definition is named', () => {
+  const { errors, snippets } = parseTemplate(
+    '<snippet name="a"><i/></snippet>\n<snippet name="a"><b/></snippet>\n<template><i/></template>',
+  )
+  expect(errors.some((e) => /"a" is defined twice/.test(e.message) && e.line === 2)).toBe(true)
+  expect(snippets).toHaveLength(1) // the first definition stands
 })
 
 test('snippets may not nest', () => {

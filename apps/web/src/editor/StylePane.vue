@@ -613,13 +613,7 @@ const outside = computed(() => declarations.value.filter((d) => !GRID_PROPS.has(
 .note { font-family: var(--font-mono); font-size: 9px; color: var(--meta-foreground); }
 .row { display: flex; gap: 6px; min-width: 0; }
 .row .prop { flex: none; width: 44%; }
-.ctl {
-  width: 100%; min-width: 0; height: 25px; padding: 0 7px; border: 1px solid transparent;
-  border-radius: var(--radius-control); background: var(--field); outline: none;
-  font-family: var(--font-mono); font-size: 10.5px; color: var(--foreground);
-  transition: background-color 120ms ease-out, border-color 120ms ease-out;
-}
-.ctl:focus-visible { border-color: var(--primary); background: var(--pane); }
+/* `.ctl` comes from ui/controls.css (UI-03). */
 .row.bad .ctl { border-color: var(--destructive); }
 .none { margin: 0; font-size: 11px; color: var(--muted-foreground); }
 </style>

@@ -14,6 +14,14 @@ import type { RenderedLabel } from '../types'
  */
 const BASE = 'html,body{margin:0;padding:0}:where(div){display:flex;flex-direction:column}'
 
+/**
+ * Print documents carry a CSP: the print iframe is same-origin (so `print()` is callable), so
+ * template markup must not be able to run script or phone home from there. Preview and raster
+ * documents are exempt — the preview frame needs its inline inspector script and is null-origin
+ * anyway (spec §4.3).
+ */
+const CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; font-src data: blob:; style-src 'unsafe-inline'">`
+
 type Size = { width: number; height: number }
 
 /**
@@ -72,7 +80,7 @@ export function labelDocument(
   const page = forPrint
     ? `@page { size: ${sheet.width}mm ${sheet.height}mm; margin: 0 } .label,.slot { page-break-after: always }`
     : ''
-  return `<!doctype html><meta charset="utf-8"><style>${BASE}${page}\n${label.css}</style>${labels}`
+  return `<!doctype html><meta charset="utf-8">${forPrint ? CSP : ''}<style>${BASE}${page}\n${label.css}</style>${labels}`
 }
 
 /** A grid of labels on a cut sheet, in millimetres. Margins are the leading offsets. */
@@ -143,7 +151,7 @@ export function sheetDocument(
     )
   }
   const page = `@page { size: ${paper.width}mm ${paper.height}mm; margin: 0 }`
-  return `<!doctype html><meta charset="utf-8"><style>${BASE}${page}\n${label.css}</style>${pages.join('\n')}`
+  return `<!doctype html><meta charset="utf-8">${CSP}<style>${BASE}${page}\n${label.css}</style>${pages.join('\n')}`
 }
 
 /**

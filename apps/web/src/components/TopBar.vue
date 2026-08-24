@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button } from '@/components/ui/button'
+import { Button } from '@/ui'
 import type { View } from '@/stores/view'
 
 const view = defineModel<View>({ required: true })
@@ -8,6 +8,8 @@ const props = defineProps<{
   /** Live mono badge per tab (design §2): source · sel/total, W × H · gap G, ● device. */
   badges: Record<View, string>
   printCount: number
+  /** An oversized job (COR-08): the count still shows, the button will not fire. */
+  printDisabled?: boolean
 }>()
 
 const emit = defineEmits<{ print: [] }>()
@@ -62,9 +64,8 @@ const TABS: { id: View; label: string }[] = [
 
     <div class="flex-1" />
 
-    <!-- The only filled button in the app (design invariant 1); disabled keeps the fill at 38%,
-         never a grey ghost (F1). -->
-    <Button class="h-8 gap-2 rounded-[var(--radius-control)] disabled:opacity-[0.38]" :disabled="printCount === 0" @click="emit('print')">
+    <!-- The only filled button in the app (design invariant 1). -->
+    <Button primary style="--btn-h: 32px" :disabled="printCount === 0 || props.printDisabled" @click="emit('print')">
       Print {{ printCount }}
     </Button>
   </header>
