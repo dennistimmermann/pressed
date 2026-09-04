@@ -2,6 +2,18 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      Template code is untrusted (invariant 7). `sandbox="allow-scripts"` gives it a null origin
+      but does not touch the network, so the policy is what actually stops a template phoning
+      home: `connect-src 'none'` (no fetch/XHR/WebSocket) and images only from `data:`/`blob:`.
+      `'unsafe-eval'` is required — `evaluate()` runs the compiled module through `new Function`.
+      `'self'` matches the app origin the frame was served from (CSP resolves it against the
+      response URL, not the opaque origin), so it holds under dev, preview and Pages alike.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'"
+    />
     <title>pressed runtime frame</title>
     <!-- Deliberately no app CSS: this document only compiles and renders template code. -->
   </head>

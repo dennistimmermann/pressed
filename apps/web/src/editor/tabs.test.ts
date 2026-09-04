@@ -65,6 +65,15 @@ describe('insertBlock', () => {
     const e = insertBlock(bare, tabsModel(bare), 'snippet', 'x')
     expect(e.start).toBe(bare.indexOf('</meta>') + 7)
   })
+  it('a snippet with a body is a shorthand block, in the snippet\'s place', () => {
+    const m = tabsModel(src)
+    const body = '<svg viewBox="0 0 24 24" width="4mm" height="4mm">\n  <path d="M4 7h16" />\n</svg>'
+    const e = insertBlock(src, m, 'snippet', 'icon-x', null, body)
+    expect(e.start).toBe(m.snippets[1].end) // same place as the empty stub
+    expect(e.text).toBe(`\n\n<snippet name="icon-x">\n  <svg viewBox="0 0 24 24" width="4mm" height="4mm">\n    <path d="M4 7h16" />\n  </svg>\n</snippet>`)
+    const out = src.slice(0, e.start) + e.text + src.slice(e.end)
+    expect(tabsModel(out).snippets.find((s) => s.name === 'icon-x')!.shorthand).toBe(true)
+  })
   it('adds a style to a snippet, expanding a shorthand body first', () => {
     const m = tabsModel(src)
     const e = insertBlock(src, m, 'style', undefined, 'badge')

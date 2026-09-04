@@ -18,7 +18,7 @@ export {
   renameRule, ruleAtCaret, ruleOrigin, styleMarkers, styleTargets,
 } from './style'
 export {
-  can, canFor, deleteSelected, deleteSnippet, duplicateSelected, erroredElements, indentSelected,
+  addIcon, can, canFor, deleteSelected, deleteSnippet, duplicateSelected, erroredElements, indentSelected,
   insertText, insertables, layerCount, layers, moveSelected, outdentSelected, promoteSnippet,
   renameSnippet, reparent, runOnElement, scopeRules, scriptInfo, selectElement, setSelectedText,
   wrapChoices,

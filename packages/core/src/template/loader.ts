@@ -20,6 +20,12 @@ export type ParsedSnippet = {
   descriptor: SFCDescriptor
   /** Add this to an offset in `source` to get the offset in the *file* (spec: one model, one truth). */
   locBase: number
+  /**
+   * Add this to a line in `source` to get the line the editor counts from — the one after the
+   * `<snippet …>` tag. Negative: the synthetic wrapper puts the body one line down (two with a
+   * `props` declare), and the body's own leading newline is the open-tag line's tail.
+   */
+  lineBase: number
 }
 
 export type ParsedTemplate = {
@@ -85,8 +91,12 @@ export function parseTemplate(source: string): ParsedTemplate {
       for (const e of parsedSnippet.errors) errors.push(toMessage(e, file))
       // The wrapper (shorthand form) keeps the body verbatim, so finding it gives the shift
       // from snippet-source offsets back to file offsets.
-      const locBase = block.loc.start.offset - snippetSource.indexOf(block.content)
-      snippets.push({ name, source: snippetSource, descriptor: parsedSnippet.descriptor, locBase })
+      const bodyAt = snippetSource.indexOf(block.content)
+      const locBase = block.loc.start.offset - bodyAt
+      // ponytail: exact for a body that starts on its own line (every snippet the app writes);
+      // a one-line `<snippet>…</snippet>` reads a column off, still inside its own line.
+      const lineBase = -snippetSource.slice(0, bodyAt).split('\n').length
+      snippets.push({ name, source: snippetSource, descriptor: parsedSnippet.descriptor, locBase, lineBase })
     }
   }
 
@@ -142,7 +152,7 @@ export function compileTemplate(source: string, opts: CompileOptions = {}): Comp
   errors.push(...validateSubset(parsed.main, 'main'))
 
   for (const snippet of parsed.snippets) {
-    errors.push(...validateSubset(snippet.descriptor, `snippet:${snippet.name}`))
+    errors.push(...validateSubset(snippet.descriptor, `snippet:${snippet.name}`, snippet.lineBase))
     blocks.push(`__components__[${JSON.stringify(snippet.name)}] = ${compileComponent(snippet.source, snippet.name, `snippet:${snippet.name}`, errors, css, opts.inspector ? snippet.locBase : false)};`)
     sources[snippet.name] = snippet.source
   }

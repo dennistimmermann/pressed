@@ -14,16 +14,24 @@ describe('print CSP (SEC-01)', () => {
     expect(labelDocument(labels(1), size, true)).toContain(CSP)
   })
 
-  it('preview and raster documents do not — the inspector script must run there', () => {
-    expect(labelDocument(labels(1), size)).not.toContain(CSP)
-    expect(labelDocument(labels(1), size, false)).not.toContain(CSP)
+  const policy = (doc: string) => /Content-Security-Policy" content="([^"]+)"/.exec(doc)![1]
+
+  it('preview documents carry it too, allowing inline script only — the inspector script runs there', () => {
+    const content = policy(labelDocument(labels(1), size))
+    expect(content).toContain("script-src 'unsafe-inline'")
+    expect(policy(labelDocument(labels(1), size, false))).toBe(content)
   })
 
-  it('the policy allows no network sources', () => {
-    const doc = labelDocument(labels(1), size, true)
-    const content = /Content-Security-Policy" content="([^"]+)"/.exec(doc)![1]
-    expect(content).toContain("default-src 'none'")
-    expect(content).not.toMatch(/https?:/)
+  it('print documents allow no script at all', () => {
+    expect(policy(labelDocument(labels(1), size, true))).not.toContain('script-src')
+  })
+
+  it('neither policy allows a network source', () => {
+    for (const doc of [labelDocument(labels(1), size, true), labelDocument(labels(1), size)]) {
+      const content = policy(doc)
+      expect(content).toContain("default-src 'none'")
+      expect(content).not.toMatch(/https?:|'self'/)
+    }
   })
 })
 

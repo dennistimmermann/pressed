@@ -2,13 +2,19 @@ import { parserOptions } from '@vue/compiler-dom'
 import { subset, type ElementRule } from '@pressed/core'
 import type { ComponentSchema } from '../types'
 
-/** One entry of the insert popup: a library component, a snippet, or a plain HTML element. */
+/** An icon snippet, plus the `<svg>` the badge draws — `null` when the source's markup was
+    rejected by the sanitiser and the row falls back to a text badge. */
+export type IconSchema = ComponentSchema & { glyph?: string | null }
+
+/** One entry of the insert popup: a library component, a snippet, an icon, or a plain HTML element. */
 export type InsertItem = {
   name: string
-  kind: 'component' | 'snippet' | 'html' | 'variable'
+  kind: 'component' | 'snippet' | 'icon' | 'html' | 'variable'
   /** What is inserted; `|` marks where the caret lands. */
   text: string
   hint: string
+  /** Icons only: sanitised `<svg>` markup for the badge. */
+  glyph?: string | null
   /** HTML only: allowed only directly inside one of these parents (li → ul/ol). */
   parents?: string[]
   /** Set when the current parent does not allow it: the row stays visible but muted (SPEC §4.8). */
@@ -41,6 +47,7 @@ export function insertItems(
   snippets: ComponentSchema[],
   parent: string | null,
   elements: Record<string, ElementRule> = subset.elements,
+  icons: IconSchema[] = [],
 ): InsertItem[] {
   const only = parent ? elements[parent]?.children : undefined
   // Inside a parent that only takes specific children the rest is not listed at all; elsewhere a
@@ -56,6 +63,9 @@ export function insertItems(
   return [
     ...components.map((c) => ({ name: c.name, kind: 'component' as const, hint: c.props.map((p) => p.name).join(' '), text: componentText(c) })),
     ...snippets.map((c) => ({ name: c.name, kind: 'snippet' as const, hint: c.props.map((p) => p.name).join(' '), text: componentText(c) })),
+    // After the snippets, before the HTML. No hint: once it is in the file, where the icon came
+    // from no longer matters to Insert — the badge says what it is.
+    ...icons.map((c) => ({ name: c.name, kind: 'icon' as const, hint: '', text: componentText(c), glyph: c.glyph })),
     ...html,
   ]
 }

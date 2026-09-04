@@ -4,7 +4,10 @@ import {
   matchingElements, moveElement, outdentElement, reparentElement, setText, unwrapElement,
   wrapElement, insertElementText,
 } from '@/editor/ast.ts'
-import { blockOf } from '@/editor/tabs.ts'
+import { blockOf, insertBlock } from '@/editor/tabs.ts'
+import { sanitizeSvg } from '@/icons/sanitize.ts'
+import { iconSnippetBody, iconSnippetName } from '@/icons/snippet.ts'
+import type { Icon } from '@/icons/types.ts'
 import { rulesIn, type Rule } from '@/editor/css.ts'
 import type { Edit, ElementInfo, LayerNode, Loc, StructureEdit } from '@/editor/ast.ts'
 import { LIBRARY_NAMES } from '@pressed/core'
@@ -98,14 +101,54 @@ export const can = computed(() => capabilities(element.value))
 /** The same, for any Layers row — the `⋯` menu's disabled items. `start + 1`: see `run`. */
 export const canFor = (loc: Loc) => capabilities(elementAt(editor.source, loc.start + 1))
 
-/** What `Wrap ▾` offers on top of its own div/span/p: the library, then this file's snippets. */
-export const wrapChoices = computed(() => [...LIBRARY_NAMES, ...tabs.value.snippets.map((s) => s.name)])
+/** An icon is a snippet named `icon-*`, and the prefix is the whole distinction (plan-icons §1). */
+export const isIcon = (name: string) => name.startsWith('icon-')
+
+/**
+ * Add an icon to the file as a shorthand `<snippet name="icon-*">`. Idempotent (re-picking one
+ * the file already has is a no-op), one `applyEdits` so one `⌘Z` takes it away again, and it
+ * deliberately does not enter the new scope: you add, then place (plan-icons §6).
+ */
+export function addIcon(icon: Icon) {
+  const name = iconSnippetName(icon.name)
+  if (tabs.value.snippets.some((s) => s.name === name)) return
+  applyEdits([insertBlock(editor.source, tabs.value, 'snippet', name, null, iconSnippetBody(icon))])
+}
+
+/**
+ * The icon snippet's own `<svg>`, for the insert Picker's badge.
+ *
+ * Security: this is file content — hand-editable text — rendered into the *app* DOM, not into
+ * the null-origin runtime frame, so it goes through the same sanitiser the catalogue uses.
+ * `null` (a rejection, or no `<svg>` at all) means the caller shows a text badge instead.
+ */
+export function iconGlyph(name: string): string | null {
+  const snippet = tabs.value.snippets.find((s) => s.name === name)
+  if (!snippet) return null
+  const svg = /<svg\b([^>]*)>([\s\S]*)<\/svg\s*>/.exec(editor.source.slice(snippet.start, snippet.end))
+  const viewBox = svg && /viewBox\s*=\s*"([^"]*)"/.exec(svg[1])
+  if (!svg || !viewBox) return null
+  const out = sanitizeSvg(svg[2])
+  return 'body' in out ? `<svg viewBox="${viewBox[1]}">${out.body}</svg>` : null
+}
+
+/** What `Wrap ▾` offers on top of its own div/span/p: the library, then this file's snippets.
+    Icons are out — wrapping a selection in a pictogram means nothing (plan-icons §8). */
+export const wrapChoices = computed(() => [
+  ...LIBRARY_NAMES,
+  ...tabs.value.snippets.map((s) => s.name).filter((name) => !isIcon(name)),
+])
 
 /** What every insert popup offers — Layers' `+ Insert element` and the editor's `+ component`. */
-export const insertables = computed(() => ({
-  components: editor.components.filter((c) => LIBRARY_NAMES.includes(c.name)),
-  snippets: editor.components.filter((c) => !LIBRARY_NAMES.includes(c.name)),
-}))
+export const insertables = computed(() => {
+  const own = editor.components.filter((c) => !LIBRARY_NAMES.includes(c.name))
+  return {
+    components: editor.components.filter((c) => LIBRARY_NAMES.includes(c.name)),
+    snippets: own.filter((c) => !isIcon(c.name)),
+    // Their own kind, after the snippets: the badge is the glyph, so it carries one.
+    icons: own.filter((c) => isIcon(c.name)).map((c) => ({ ...c, glyph: iconGlyph(c.name) })),
+  }
+})
 
 export const layers = computed<LayerNode[]>(() =>
   scopeTemplate.value ? elementTree(editor.source, scopeTemplate.value) : [],

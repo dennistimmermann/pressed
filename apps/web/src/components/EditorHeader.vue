@@ -57,6 +57,7 @@ watch(() => editor.labelSetupOpen, (open) => {
       class="flex-none"
       :model="tabs" :scope="editor.activeTab.scope" :file="filename" :dirty="dirty" :badges="badges"
       @leave-scope="leaveScope" @enter-scope="enterScope" @add="addBlock('snippet')"
+      @add-icon="editor.iconsOpen = true"
       @rename="renameSnippet(editor.activeTab.scope ?? '', $event)"
       @promote="promoteSnippet" @delete="deleteSnippet"
     />

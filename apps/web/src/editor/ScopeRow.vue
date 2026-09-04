@@ -5,8 +5,8 @@
   active. The file tab is the way out of a scope.
 -->
 <script setup lang="ts">
-import { nextTick, ref, useTemplateRef } from 'vue'
-import { AddRow } from '@/ui'
+import { computed, nextTick, ref, useTemplateRef } from 'vue'
+import { AddRow, Menu } from '@/ui'
 import { tabKey, type Badge, type TabsModel } from './tabs'
 
 const props = withDefaults(
@@ -28,20 +28,40 @@ const emit = defineEmits<{
   'leave-scope': []
   'enter-scope': [name: string]
   add: []
+  'add-icon': []
   rename: [name: string]
   promote: [name: string]
   delete: [name: string]
 }>()
 
-/** A tab stands for a whole scope: worst level, summed counts. */
-function badgeOf(scope: string | null): Badge | undefined {
-  const blocks = scope === null ? props.model.blocks : props.model.snippets.find((s) => s.name === scope)?.blocks ?? []
-  const parts = blocks.map((b) => props.badges[tabKey({ scope, kind: b.kind })]).filter((x): x is Badge => !!x)
+/** An icon is a snippet named `icon-*`, and the prefix is the whole distinction (plan-icons §1). */
+const isIcon = (name: string) => name.startsWith('icon-')
+
+// Icons are grouped, not listed: however many a file has, they take one pill and never a tab of
+// their own — a label with twelve pictograms would otherwise be nothing but icon tabs.
+const snippets = computed(() => props.model.snippets.filter((s) => !isIcon(s.name)))
+const icons = computed(() => props.model.snippets.filter((s) => isIcon(s.name)).map((s) => s.name))
+const activeIcon = computed(() => (props.scope && isIcon(props.scope) ? props.scope : null))
+
+const iconMenu = ref<DOMRect | null>(null)
+const iconItems = computed(() => icons.value.map((name) => ({ value: name, label: name, mono: true })))
+/** The pill stands for every icon at once, so it sums their badges the way a tab sums its blocks. */
+const iconBadge = computed(() => sum(icons.value.map(badgeOf)))
+
+/** Worst level, summed counts — of a scope's blocks, or of the icons pill's scopes. */
+function sum(badges: (Badge | undefined)[]): Badge | undefined {
+  const parts = badges.filter((x): x is Badge => !!x)
   if (!parts.length) return undefined
   return {
     level: parts.some((p) => p.level === 'error') ? 'error' : 'warning',
     count: parts.reduce((n, p) => n + p.count, 0),
   }
+}
+
+/** A tab stands for a whole scope. */
+function badgeOf(scope: string | null): Badge | undefined {
+  const blocks = scope === null ? props.model.blocks : props.model.snippets.find((s) => s.name === scope)?.blocks ?? []
+  return sum(blocks.map((b) => props.badges[tabKey({ scope, kind: b.kind })]))
 }
 
 // ---------------------------------------------------------------- inline rename
@@ -82,12 +102,12 @@ function commitRename() {
 
       <!-- F11: a file with no snippets has no SNIPPETS tab group — a contentless tab does not
            render, and adding one is the dashed `+ snippet` beside the trough (atlas 14). -->
-      <template v-if="model.snippets.length">
+      <template v-if="snippets.length">
         <span class="hairline" aria-hidden="true" />
         <span class="eyebrow">Snippets</span>
       </template>
 
-      <template v-for="s in model.snippets" :key="s.name">
+      <template v-for="s in snippets" :key="s.name">
         <input
           v-if="renaming && s.name === scope"
           ref="renameInput"
@@ -107,10 +127,31 @@ function commitRename() {
         </button>
       </template>
 
+      <!-- One pill for every icon in the file: idle it says `icons · N`, inside an icon's scope
+           it says that icon's name in accent, and either way it opens the list of names. -->
+      <template v-if="icons.length">
+        <span class="hairline" aria-hidden="true" />
+        <button
+          type="button" class="tab" :class="{ on: !!activeIcon, open: !!iconMenu }"
+          :aria-label="`Icons in this file (${icons.length})`"
+          @click="iconMenu = iconMenu ? null : ($event.currentTarget as HTMLElement).getBoundingClientRect()"
+        >
+          <span class="label">{{ activeIcon ?? 'icons' }}</span>
+          <span class="count">{{ icons.length }}</span>
+          <span v-if="iconBadge" class="badge" :class="iconBadge.level">● {{ iconBadge.count }}</span>
+        </button>
+      </template>
     </div>
 
     <!-- The one add grammar: a dashed `+ noun`, never a bare `+` (F18). -->
     <AddRow noun="snippet" inline title="add a snippet to this file" @click="emit('add')" />
+    <!-- *Add*, not *insert*: an icon snippet joins the file; placing an instance is `+ element`. -->
+    <AddRow noun="icon" inline title="add an icon to this file" @click="emit('add-icon')" />
+
+    <Menu
+      :anchor="iconMenu" :items="iconItems" :width="200"
+      @pick="iconMenu = null; emit('enter-scope', $event)" @close="iconMenu = null"
+    />
 
     <span class="grow" />
 
@@ -194,6 +235,17 @@ function commitRename() {
 /* An active snippet says "you are inside something": accent text (SPEC §4.1). */
 .tab.on:not(.file) .label {
   color: var(--accent-foreground);
+}
+/* The icons pill, open: its menu is showing, so the pill reads as pressed without stealing the
+   active-tab surface from whatever scope you are actually in. */
+.tab.open {
+  background: var(--row-hover);
+}
+.count {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--scope-faint);
 }
 .dot {
   width: 5px;

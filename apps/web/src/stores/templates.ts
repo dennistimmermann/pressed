@@ -1,46 +1,24 @@
 import { reactive, toRaw } from 'vue'
 import { parseMeta } from '@pressed/core/template/meta.ts'
 import type { Assets } from '@pressed/core'
+import { tx } from './db'
 
 export type TemplateRecord = { id: string; source: string; assets: Assets; updatedAt: number }
 
 /**
  * Templates live in IndexedDB, not localStorage: a bundled font blows the ~5 MB quota
- * immediately (design §6). ~40 lines of native API is cheaper than a wrapper library.
+ * immediately (design §6). The database itself is opened in `db.ts` — one opener for all stores.
  */
-const DB = 'pressed'
-const STORE = 'templates'
-
-let db: Promise<IDBDatabase> | null = null
-function open(): Promise<IDBDatabase> {
-  db ??= new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB, 1)
-    req.onupgradeneeded = () => req.result.createObjectStore(STORE, { keyPath: 'id' })
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-  return db
-}
-
-async function tx<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
-  const store = (await open()).transaction(STORE, mode).objectStore(STORE)
-  return new Promise((resolve, reject) => {
-    const req = run(store)
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-}
-
 export const templateStore = {
-  list: () => tx<TemplateRecord[]>('readonly', (s) => s.getAll()),
-  get: (id: string) => tx<TemplateRecord | undefined>('readonly', (s) => s.get(id)),
+  list: () => tx<TemplateRecord[]>('templates', 'readonly', (s) => s.getAll()),
+  get: (id: string) => tx<TemplateRecord | undefined>('templates', 'readonly', (s) => s.get(id)),
   async put(record: Omit<TemplateRecord, 'updatedAt'>) {
     // IndexedDB structured-clones the value: Vue proxies (assets from the reactive store) must be unwrapped first.
     const full = { ...record, assets: toRaw(record.assets), updatedAt: Date.now() }
-    await tx('readwrite', (s) => s.put(full))
+    await tx('templates', 'readwrite', (s) => s.put(full))
     return full
   },
-  delete: (id: string) => tx('readwrite', (s) => s.delete(id)),
+  delete: (id: string) => tx('templates', 'readwrite', (s) => s.delete(id)),
 }
 
 /** Bundled examples: real .vue files in src/templates, read as text so they are just sources. */

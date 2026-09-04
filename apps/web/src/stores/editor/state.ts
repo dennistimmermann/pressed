@@ -28,6 +28,7 @@ export const editor = reactive({
   /** Last *good* render; a compile error keeps it on screen (design §3.7). */
   label: null as RenderedLabel | null,
   manageOpen: false,
+  iconsOpen: false,
   /** Which block the tab strip shows (README-tabs §1). The label's template is the way in. */
   activeTab: { scope: null, kind: 'template' } as TabRef,
   /** Caret per tab, remembered for the session only (README-tabs §9). */

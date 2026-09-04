@@ -15,12 +15,16 @@ import type { RenderedLabel } from '../types'
 const BASE = 'html,body{margin:0;padding:0}:where(div){display:flex;flex-direction:column}'
 
 /**
- * Print documents carry a CSP: the print iframe is same-origin (so `print()` is callable), so
- * template markup must not be able to run script or phone home from there. Preview and raster
- * documents are exempt — the preview frame needs its inline inspector script and is null-origin
- * anyway (spec §4.3).
+ * Every document carries a CSP, because a template must never load from or phone home to the
+ * network (invariant 7) — and a null-origin frame only stops it reaching the *app*, not the
+ * outside. Print documents forbid script outright: the print iframe is same-origin (so `print()`
+ * is callable). Preview and thumbnail documents allow inline script only, for the app's own
+ * inspector script (spec §4.3). The raster path never loads the document as a page — it lifts
+ * `<style>` and body into a `<foreignObject>` — so the meta is inert there.
  */
-const CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; font-src data: blob:; style-src 'unsafe-inline'">`
+const NETWORK = `default-src 'none'; img-src data: blob:; font-src data: blob:; style-src 'unsafe-inline'`
+const CSP = `<meta http-equiv="Content-Security-Policy" content="${NETWORK}">`
+const PREVIEW_CSP = `<meta http-equiv="Content-Security-Policy" content="${NETWORK}; script-src 'unsafe-inline'">`
 
 type Size = { width: number; height: number }
 
@@ -80,7 +84,7 @@ export function labelDocument(
   const page = forPrint
     ? `@page { size: ${sheet.width}mm ${sheet.height}mm; margin: 0 } .label,.slot { page-break-after: always }`
     : ''
-  return `<!doctype html><meta charset="utf-8">${forPrint ? CSP : ''}<style>${BASE}${page}\n${label.css}</style>${labels}`
+  return `<!doctype html><meta charset="utf-8">${forPrint ? CSP : PREVIEW_CSP}<style>${BASE}${page}\n${label.css}</style>${labels}`
 }
 
 /** A grid of labels on a cut sheet, in millimetres. Margins are the leading offsets. */

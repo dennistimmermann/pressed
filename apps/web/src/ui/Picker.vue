@@ -16,7 +16,12 @@ export type PickerRow = {
   preview?: string
   /** A 2-letter kind marker in front of the label (`C`, `S`, `<>`). */
   badge?: string
-  badgeKind?: 'comp' | 'snip' | 'html'
+  badgeKind?: 'comp' | 'snip' | 'html' | 'icon'
+  /**
+   * `icon` kind: the glyph itself in the plain badge box, instead of a letter. Markup, so it is
+   * rendered with `v-html` — the caller sanitises it and falls back to `badge` when it cannot.
+   */
+  badgeSvg?: string
   /** Cannot be picked; `preview` says why. */
   disabled?: boolean
   on?: boolean
@@ -78,7 +83,9 @@ const focus = (el: unknown) => (el as HTMLInputElement | null)?.focus()
       v-for="row in shown" :key="row.value" type="button" class="row"
       :class="{ off: row.disabled, on: row.on }" @click="emit('pick', row.value, $event)"
     >
-      <span v-if="row.badge" class="badge" :class="row.badgeKind">{{ row.badge }}</span>
+      <!-- Markup, sanitised by the caller (see `badgeSvg`); a rejection leaves `badge` instead. -->
+      <span v-if="row.badgeSvg" class="badge icon" v-html="row.badgeSvg" />
+      <span v-else-if="row.badge" class="badge" :class="row.badgeKind">{{ row.badge }}</span>
       <span class="l">{{ row.label }}</span>
       <span v-if="row.preview" class="p">{{ row.preview }}</span>
     </button>
@@ -125,6 +132,9 @@ const focus = (el: unknown) => (el as HTMLInputElement | null)?.focus()
   background: var(--field); color: var(--muted-foreground);
 }
 .badge.snip { background: var(--info-bg); color: var(--info); }
+/* The icon kind: the glyph itself in the plain badge box — no fifth letter, no new colour. */
+.badge.icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 13.5px; padding: 0; }
+.badge.icon svg { width: 10px; height: 10px; }
 .badge.comp { background: var(--comp-bg); color: var(--comp-fg); }
 .none { margin: 0; padding: 5px 9px; font-family: var(--font-sans); font-size: var(--t3); color: var(--muted-foreground); }
 </style>

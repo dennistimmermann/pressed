@@ -110,21 +110,28 @@ export function tabAt(model: TabsModel, offset: number): TabRef | null {
   return b ? { scope: null, kind: b.kind } : null
 }
 
-/** Insert a missing block (or a new snippet) in *file* order: meta → snippets → script → template → style. */
-export function insertBlock(source: string, model: TabsModel, kind: BlockKind | 'snippet', name = 'new', scope: string | null = null): Edit {
+const indent = (t: string) => t.split('\n').map((l) => (l ? '  ' + l : l)).join('\n')
+
+/**
+ * Insert a missing block (or a new snippet) in *file* order: meta → snippets → script → template → style.
+ * `body` fills a new snippet with markup instead of an empty `<template>` — a *shorthand* body,
+ * which is what an icon snippet is.
+ */
+export function insertBlock(source: string, model: TabsModel, kind: BlockKind | 'snippet', name = 'new', scope: string | null = null, body?: string): Edit {
   const stub: Record<BlockKind | 'snippet', string> = {
     script: '<script setup lang="ts">\n\n</script>',
     template: '<template>\n\n</template>',
     // A snippet's own styles are scoped — the runtime compiles every `<style>` with its own
     // `scoped` flag, so a snippet block without it would leak into the whole label.
     style: scope === null ? '<style>\n\n</style>' : '<style scoped>\n\n</style>',
-    snippet: `<snippet name="${name}">\n  <template>\n\n  </template>\n</snippet>`,
+    snippet: body
+      ? `<snippet name="${name}">\n${indent(body)}\n</snippet>`
+      : `<snippet name="${name}">\n  <template>\n\n  </template>\n</snippet>`,
   }
   if (scope !== null && kind !== 'snippet') {
     // Inside a snippet: before its </snippet>, in the same order; a shorthand body has to become explicit first.
     const s = model.snippets.find((x) => x.name === scope)!
     const closeAt = source.lastIndexOf('</snippet', s.end)
-    const indent = (t: string) => t.split('\n').map((l) => (l ? '  ' + l : l)).join('\n')
     if (s.shorthand) {
       const body = source.slice(s.blocks[0].contentStart, s.blocks[0].contentEnd)
       // `props="a b"` only means something on a shorthand body (the loader ignores it once there is a

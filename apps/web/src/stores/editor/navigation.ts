@@ -11,9 +11,8 @@ export const caretLine = computed(
 
 /**
  * Status rows and render errors carry `file:line:col`; the editor speaks offsets. Snippet
- * lines are relative to the snippet body, so we start counting at its opening tag.
- * ponytail: shorthand snippets are wrapped in a synthetic `<template>` before compiling, so
- * their line numbers can be one off — it still lands inside the right block.
+ * lines count from the line after the opening tag (the loader's `lineBase` undoes whatever
+ * wrapper it compiled the body through), so we start there.
  */
 export function offsetOf(loc: { file: string; line?: number; col?: number }): number | null {
   if (!loc.line) return null
@@ -28,7 +27,10 @@ export function offsetOf(loc: { file: string; line?: number; col?: number }): nu
   const lines = source.slice(base).split('\n')
   let offset = base
   for (let i = 0; i < loc.line - 1 && i < lines.length; i++) offset += lines[i].length + 1
-  return offset + Math.max(0, (loc.col ?? 1) - 1)
+  // A column past the end of its line must not run on into the next line — or, at the end of a
+  // snippet, into the next block, where it would badge and jump to the wrong tab.
+  const width = lines[Math.min(loc.line - 1, lines.length - 1)]?.length ?? 0
+  return offset + Math.min(Math.max(0, (loc.col ?? 1) - 1), width)
 }
 
 /**

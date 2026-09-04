@@ -3,7 +3,7 @@ import { editor as monacoEditor, type IRange, MarkerSeverity, Range, Uri } from 
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useTemplateRef, watch } from 'vue'
 import type { EditorHandle } from './editor-handle'
 import { attributeEdit, cursorContext, elementAt, insertAt, insertVar, type CursorContext } from './ast'
-import { insertItems, type InsertItem } from './inspector/insert'
+import { insertItems, type IconSchema, type InsertItem } from './inspector/insert'
 import type { ComponentSchema } from './types'
 import { getOrCreateModel, startLanguageService } from './monaco/env'
 import { componentUri, ENV_URI, SPRINT_MODULE_URI, pressedEnv } from './monaco/pressed-env'
@@ -45,7 +45,7 @@ const props = withDefaults(
      * `+ component`: library components and this file's snippets, on top of plain HTML filtered
      * by the enclosing element. Off (no button) when null — the host only passes it in a template block.
      */
-    insertables?: { components: ComponentSchema[]; snippets: ComponentSchema[] } | null
+    insertables?: { components: ComponentSchema[]; snippets: ComponentSchema[]; icons?: IconSchema[] } | null
     /** `+ variable`: the `row.x` paths, or — inside a snippet scope — its props. Off when null. */
     variables?: { path: string; hint: string }[] | null
   }>(),
@@ -188,7 +188,7 @@ const items = computed<InsertItem[]>(() => {
   let all: InsertItem[]
   if (mode === 'components') {
     const parent = elementAt(instance.value?.getValue() ?? '', from)
-    all = insertItems(props.insertables!.components, props.insertables!.snippets, parent?.tag ?? null)
+    all = insertItems(props.insertables!.components, props.insertables!.snippets, parent?.tag ?? null, undefined, props.insertables!.icons)
   } else {
     // `insertVar` decides `{{ row.x }}` versus bare `row.x` at pick time, from the caret's context.
     all = (props.variables ?? []).map((v) => ({ name: v.path, kind: 'variable', hint: v.hint, text: '' }))
@@ -292,6 +292,10 @@ onMounted(() => {
     minimap: { enabled: false },
     overviewRulerLanes: 0,
     inlineSuggest: { enabled: false },
+    // A label is prose and measurements, not identifiers: `20×10`, `–` for unset, `…` are the
+    // point, not homoglyph tricks — so no box around them. Invisible characters keep theirs: a
+    // stray non-breaking or zero-width space prints.
+    unicodeHighlight: { ambiguousCharacters: false, nonBasicASCII: false },
     fixedOverflowWidgets: true,
     smoothScrolling: false,
     cursorBlinking: 'solid',
@@ -566,10 +570,14 @@ defineExpose(handle)
           :class="{ on: i === cursor && !item.illegal, off: !!item.illegal }"
           @mouseenter="item.illegal || (cursor = i)" @mousedown.prevent="pick(item)"
         >
+          <!-- An icon's badge is its glyph: markup, already through the sanitiser (`iconGlyph`); a
+               rejected one has no glyph and wears the snippet's `S`. -->
+          <span v-if="item.glyph" class="badge icon" v-html="item.glyph" />
           <span
+            v-else
             class="badge"
-            :class="item.kind === 'html' ? 'html' : item.kind === 'snippet' ? 'snip' : item.kind === 'variable' ? 'var' : 'comp'"
-          >{{ item.kind === 'html' ? '&lt;&gt;' : item.kind === 'snippet' ? 'S' : item.kind === 'variable' ? '{ }' : 'C' }}</span>
+            :class="item.kind === 'html' ? 'html' : item.kind === 'snippet' || item.kind === 'icon' ? 'snip' : item.kind === 'variable' ? 'var' : 'comp'"
+          >{{ item.kind === 'html' ? '&lt;&gt;' : item.kind === 'snippet' || item.kind === 'icon' ? 'S' : item.kind === 'variable' ? '{ }' : 'C' }}</span>
           <span class="name">{{ item.name }}</span>
           <span class="hint">{{ item.illegal ?? item.hint }}</span>
         </li>
@@ -667,6 +675,9 @@ defineExpose(handle)
 .pressed-editor .pressed-insert .badge.comp { background: var(--comp-bg); color: var(--comp-fg); }
 .pressed-editor .pressed-insert .badge.snip { background: var(--info-bg); color: var(--info); }
 .pressed-editor .pressed-insert .badge.html { background: var(--field); color: var(--muted-foreground); }
+/* The icon kind: the glyph itself in the plain badge box — the Picker's recipe. */
+.pressed-editor .pressed-insert .badge.icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 13.5px; padding: 0; background: var(--field); color: var(--muted-foreground); }
+.pressed-editor .pressed-insert .badge.icon svg { width: 10px; height: 10px; }
 .pressed-editor .pressed-insert .badge.var { background: var(--field); color: var(--accent-link); }
 .pressed-editor .pressed-insert .name { font-family: var(--font-mono); font-size: 11.5px; font-weight: 500; }
 .pressed-editor .pressed-insert .hint {

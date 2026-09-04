@@ -201,3 +201,34 @@ test('margin is the label box\'s padding — the box itself never changes size',
   expect(doc).toContain('padding:2mm')
   expect(doc).toContain('@page { size: 60mm 40mm; margin: 0 }') // the page is the label, not the printable area
 })
+
+// A subset message inside a snippet names the line the editor counts from — the one after the
+// `<snippet …>` tag — whatever wrapper the loader compiled the body through. Off by one, it badges
+// and jumps to the wrong tab once the column overruns a short line.
+test('a subset message in a shorthand snippet points at its real body line', () => {
+  const lines = [
+    '<snippet name="icon-x">',
+    '  <svg viewBox="0 0 1 1">',
+    '    <g><ellipse cx="0" cy="0" rx="1" ry="1"/></g>',
+    '  </svg>',
+    '</snippet>',
+    '<template><icon-x /></template>',
+  ]
+  const { errors } = compileTemplate(lines.join('\n'))
+  const m = errors.find((e) => e.kind === 'subset')!
+  expect(m.file).toBe('snippet:icon-x')
+  expect(lines[m.line!]).toContain('<ellipse') // line 1 = lines[1], the first body line
+  expect(lines[m.line!].slice(m.col! - 1)).toMatch(/^<ellipse/)
+})
+
+test('…and with a props declare, which adds a wrapper line', () => {
+  const lines = [
+    '<snippet name="badge" props="text">',
+    '  <div><ellipse cx="0" cy="0" rx="1" ry="1"/>{{ text }}</div>',
+    '</snippet>',
+    '<template><badge text="a" /></template>',
+  ]
+  const { errors } = compileTemplate(lines.join('\n'))
+  const m = errors.find((e) => e.kind === 'subset')!
+  expect(lines[m.line!]).toContain('<ellipse')
+})

@@ -11,7 +11,7 @@ import { AddRow, EmptyState, Menu, type MenuItem, PaneSection, Picker, type Pick
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import type { LayerNode, Loc } from './ast'
 import type { Marker } from './editor-handle'
-import { insertItems, type InsertItem } from './inspector/insert'
+import { insertItems, type IconSchema, type InsertItem } from './inspector/insert'
 import { level } from './inspector/markers'
 import type { ComponentSchema } from './types'
 
@@ -32,8 +32,8 @@ const props = defineProps<{
   count?: number
   /** Snippet names — a row with one of these tags carries `S` and enters that scope on double-click. */
   snippets?: string[]
-  /** What `+ Insert element` can insert (components / snippets / HTML, filtered by the parent of the selection). */
-  insertables?: { components: ComponentSchema[]; snippets: ComponentSchema[] } | null
+  /** What `+ Insert element` can insert (components / snippets / icons / HTML, filtered by the parent of the selection). */
+  insertables?: { components: ComponentSchema[]; snippets: ComponentSchema[]; icons?: IconSchema[] } | null
   /** Extra tags `Wrap in…` offers on top of div/span/p. */
   wrapChoices?: string[]
   /** Which commands are possible for a given row — the `⋯` menu's disabled items. */
@@ -120,6 +120,8 @@ const isSelected = (node: LayerNode) => props.selected?.start === node.loc.start
 const activeIndex = computed(() => rows.value.findIndex((r) => isSelected(r.node)))
 const rowId = (i: number) => `layer-${i}`
 const isSnippet = (node: LayerNode) => node.isComponent && !!props.snippets?.includes(node.tag)
+/** An icon instance wears its glyph, like the picker's row (already through the sanitiser). */
+const glyphOf = (node: LayerNode) => props.insertables?.icons?.find((i) => i.name === node.tag)?.glyph ?? null
 
 function toggleRow(node: LayerNode) {
   const set = new Set(folded.value)
@@ -230,18 +232,27 @@ const parentTagOfSelected = computed(() => {
 
 const insertList = computed(() =>
   props.insertables
-    ? insertItems(props.insertables.components, props.insertables.snippets, parentTagOfSelected.value)
+    ? insertItems(
+        props.insertables.components, props.insertables.snippets, parentTagOfSelected.value,
+        undefined, props.insertables.icons,
+      )
     : [],
 )
 
 /** The Picker's rows: the kind badge, the name, and what it is (or why it cannot go here). */
-const BADGE: Record<InsertItem['kind'], string> = { html: '<>', snippet: 'S', component: 'C', variable: '{ }' }
+// An icon whose markup the sanitiser rejected has no glyph, so it falls back to `S` in the
+// plain box — it is a snippet after all, and a badge is never worth trusting file text for.
+const BADGE: Record<InsertItem['kind'], string> = { html: '<>', snippet: 'S', icon: 'S', component: 'C', variable: '{ }' }
+const KIND: Record<InsertItem['kind'], PickerRow['badgeKind']> = {
+  html: 'html', snippet: 'snip', icon: undefined, component: 'comp', variable: 'comp',
+}
 const insertRows = computed<PickerRow[]>(() =>
   insertList.value.map((item) => ({
     value: `${item.kind}:${item.name}`,
     label: item.name,
     badge: BADGE[item.kind],
-    badgeKind: item.kind === 'html' ? 'html' : item.kind === 'snippet' ? 'snip' : 'comp',
+    badgeKind: item.glyph ? 'icon' : KIND[item.kind],
+    badgeSvg: item.glyph ?? undefined,
     preview: item.illegal ?? item.hint,
     disabled: !!item.illegal,
   })),
@@ -457,7 +468,9 @@ function onPick(event: Event) {
         <span v-if="errors?.has(row.node.loc.start)" class="err" role="img" aria-label="has errors">●</span>
         <span class="tag">{{ row.node.tag }}</span>
         <span v-if="row.node.classes.length" class="cls min-w-0 truncate">.{{ row.node.classes.join('.') }}</span>
-        <span v-if="row.node.isComponent" class="badge" :class="isSnippet(row.node) ? 'snip' : 'comp'" aria-hidden="true">
+        <!-- Markup, sanitised by `iconGlyph` before it ever reaches a prop (see `glyphOf`). -->
+        <span v-if="glyphOf(row.node)" class="badge icon" aria-hidden="true" v-html="glyphOf(row.node)" />
+        <span v-else-if="row.node.isComponent" class="badge" :class="isSnippet(row.node) ? 'snip' : 'comp'" aria-hidden="true">
           {{ isSnippet(row.node) ? 'S' : 'C' }}
         </span>
 
@@ -604,6 +617,9 @@ function onPick(event: Event) {
 .badge.snip { background: var(--info-bg); color: var(--info); }
 .badge.comp { background: var(--comp-bg); color: var(--comp-fg); }
 .badge.html { background: var(--field); color: var(--muted-foreground); }
+/* The icon kind: the glyph itself in the plain badge box — the Picker's recipe. */
+.badge.icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 13.5px; padding: 0; background: var(--field); color: var(--muted-foreground); }
+.badge.icon :deep(svg) { width: 10px; height: 10px; }
 
 .caret { flex: none; font-size: 8px; color: var(--muted-foreground); background: transparent; border: 0; }
 /* `⋯` appears on hover, and stays on the selected row. */

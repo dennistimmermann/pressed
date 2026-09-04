@@ -21,6 +21,7 @@ export { default as InspectorPane } from './InspectorPane.vue'
 export { default as StatusPane } from './StatusPane.vue'
 export { default as PreviewPane } from './PreviewPane.vue'
 export { default as ManageTemplates } from './ManageTemplates.vue'
+export { default as Icons } from './Icons.vue'
 export { default as LayersPane } from './LayersPane.vue'
 
 // Source analysis at the caret: the host needs it to feed the Inspector.

@@ -12,7 +12,7 @@
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 import { useElementSize, useEventListener, useMediaQuery } from '@vueuse/core'
 import { ConfirmDialog, PaneRail } from '@/ui'
-import { LayersPane, ManageTemplates, PreviewPane, StatusPane } from '@/editor'
+import { Icons, LayersPane, ManageTemplates, PreviewPane, StatusPane } from '@/editor'
 import type { EditorMode } from '@/editor'
 import type { Loc } from '@/editor/ast.ts'
 import EditorHeader from '@/components/EditorHeader.vue'
@@ -20,8 +20,10 @@ import EditorPane from '@/components/EditorPane.vue'
 import InspectorPane from '@/components/InspectorPane.vue'
 import Splitter from '@/components/Splitter.vue'
 import { rasterDataUrl } from '@/render/raster'
+import type { Rejection } from '@/icons/types'
+import { iconSets, importToMine, present, removeFromMine, renameInMine } from '@/stores/icons'
 import {
-  addBlock, can, canFor, canvasEnterScope, canvasReorder, canvasResize, canvasSelect, classTarget,
+  addBlock, addIcon, can, canFor, canvasEnterScope, canvasReorder, canvasResize, canvasSelect, classTarget,
   deleteRule, deleteSelected, deleteTemplate, duplicateSelected, editor, element, ensureSelector,
   enterScope, erroredElements, formatBlock, goToOffset, indentSelected, jumpTo, layerCount, layers,
   leaveScope, matchedLocs, meta, insertables, insertText, moveSelected, outdentSelected, previewDocument,
@@ -305,6 +307,21 @@ async function confirmDelete() {
   if (id) await deleteTemplate(id)
 }
 
+// ---------------------------------------------------------------- icons
+// Mine lives in IndexedDB, so the dialog cannot see a change it did not make: every act that
+// touches the library bumps `iconsRevision`, which is the dialog's cue to re-read the set.
+const iconsRevision = ref(0)
+const iconsRejected = ref<Rejection[]>([])
+
+async function onIconImport(files: File[]) {
+  iconsRejected.value = (await importToMine(files)).rejected
+  iconsRevision.value++
+}
+async function onIconChange(change: Promise<void>) {
+  await change
+  iconsRevision.value++
+}
+
 async function onCreate() {
   const record = await newTemplate()
   editor.manageOpen = false
@@ -421,6 +438,18 @@ async function onCreate() {
       @delete="deleting = $event"
       @import="importTemplates"
       @create="onCreate"
+    />
+
+    <!-- Add is idempotent and stays put (plan-icons §6): the tile turns `on`, the strip's icons
+         pill counts up, and the dialog is still open for the next one. -->
+    <Icons
+      :open="editor.iconsOpen" :sets="iconSets" :present="present"
+      :rejected="iconsRejected" :revision="iconsRevision"
+      @close="editor.iconsOpen = false"
+      @add="addIcon"
+      @import="onIconImport"
+      @rename="(name, next) => onIconChange(renameInMine(name, next))"
+      @remove="(name) => onIconChange(removeFromMine(name))"
     />
 
     <!-- Not undoable: it leaves the library for good, so it asks first. -->
