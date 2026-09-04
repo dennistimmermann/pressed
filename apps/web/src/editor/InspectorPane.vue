@@ -16,7 +16,7 @@ import PropertyEditor from './PropertyEditor.vue'
 import StylePane from './StylePane.vue'
 import { AddRow, EmptyState, Menu, type MenuItem, PaneSection } from '@/ui'
 import { aria, hasError, level } from './inspector/markers'
-import { setDeclarations, type Declaration, type Rule, type StyleTarget } from './css'
+import { ruleAt, setDeclarations, type Declaration, type Rule, type StyleTarget } from './css'
 import { DIRECTIVE_FIELDS } from './ast'
 import type { ElementInfo, LayerNode, Loc } from './ast'
 import type { EditorHandle, Marker } from './editor-handle'
@@ -81,6 +81,8 @@ const emit = defineEmits<{
   'delete-rule': []
   /** A `USED BY` chip: put the caret on that element. */
   select: [loc: Loc]
+  /** After a style edit: jump the editor to the declaration we wrote, switching tabs to reach it. */
+  reveal: [offset: number]
   /** A style change on a pill that has no rule yet: create it, then set the declaration. */
   declare: [{ selector: string; prop: string; value: string | null }]
 }>()
@@ -224,7 +226,18 @@ function pickSelector(selector: string) {
 
 function onSet(changes: { prop: string; value: string | null }[]) {
   const rule = activeRule.value
-  if (rule) return props.handle?.executeEdits([setDeclarations(props.source, rule, changes)])
+  if (rule) {
+    const edit = setDeclarations(props.source, rule, changes)
+    props.handle?.executeEdits([edit])
+    // Jump the editor to the declaration we just wrote — same as clicking a diagnostic, which
+    // switches to the owning tab if the Style block is not the one on screen. Re-read the fresh
+    // value so the offset is post-edit; the rule head never moves, so ruleAt still hits.
+    const prop = [...changes].reverse().find((c) => c.value !== null)?.prop
+    const src = props.handle?.getValue()
+    const d = prop && src ? ruleAt(src, rule.start + 1)?.declarations.find((x) => x.prop === prop) : null
+    emit('reveal', d?.start ?? edit.start)
+    return
+  }
   const selector = active.value?.selector
   if (selector) for (const c of changes) emit('declare', { selector, ...c })
 }
@@ -475,7 +488,9 @@ const attrMarkers = computed(() => (props.markers ?? []).filter((m) => !logicMar
 }
 .pill:hover { background: var(--field); }
 /* THE selection recipe: --accent wash + 1px inset ring (F14). */
-.pill.on { border-color: transparent; background: var(--accent); box-shadow: inset 0 0 0 1px var(--primary); font-weight: 600; color: var(--accent-foreground); }
+.pill.on { border-color: transparent; background: var(--accent); font-weight: 600; color: var(--accent-foreground); }
+.pill:focus { outline: none; box-shadow: inset 0 0 0 1px var(--muted-foreground); }
+.pill.on:focus { box-shadow: inset 0 0 0 1px var(--primary); }
 .pill.faint { opacity: 0.6; }
 /* Where the rule lives, when that is not the scope you are in. */
 .pill .from { font-size: 9px; font-weight: 450; color: var(--meta-foreground); }

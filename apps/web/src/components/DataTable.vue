@@ -103,7 +103,7 @@ const canUnmap = computed(() => !!open.value && !!mapping.value[open.value])
         <!-- Zebra is the table's own rhythm and stays whatever the selection is; deselecting a
              row empties its checkbox and nothing else (F4, atlas 04). -->
         <div
-          v-for="({ index, row }, i) in rows" :key="index"
+          v-for="({ index, row }, i) in rows" :key="index" tabindex="-1"
           class="tr" :class="{ sel: data.selected.has(index), alt: i % 2 === 1 }" :style="{ gridTemplateColumns: template }"
           @click="toggleSelected(index)"
         >
@@ -153,8 +153,10 @@ const canUnmap = computed(() => !!open.value && !!mapping.value[open.value])
   position: sticky; top: 0; z-index: 1; align-items: stretch; height: 42px;
   border-bottom-color: var(--field-border); background: var(--pane); color: var(--muted-foreground);
 }
-/* THE selection recipe: --accent wash plus a 1px inset ring, everywhere (F14). */
-.tr.sel { background: var(--accent); box-shadow: inset 0 0 0 1px var(--primary); }
+/* Checked rows are an active set: --accent wash, no ring (F14). The ring follows focus. */
+.tr.sel { background: var(--accent); }
+.tr:not(.head):focus { outline: none; box-shadow: inset 0 0 0 1px var(--muted-foreground); }
+.tr.sel:focus { box-shadow: inset 0 0 0 1px var(--primary); }
 .tr.sel:hover { background: var(--accent); }
 .v { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 8px; }
 

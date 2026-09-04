@@ -46,11 +46,12 @@ defineProps<{
   padding: 0 9px; border-color: var(--field-border); background: var(--pane); color: var(--foreground);
 }
 .chip.act:hover { background: var(--row-hover); }
-/* The one selection recipe: accent wash + 1px inset ring. */
+/* Active: accent wash, no ring. The ring follows focus — the last-clicked chip. */
 .chip.on, .chip.act.on:hover {
-  background: var(--accent); border-color: var(--primary); color: var(--accent-foreground);
-  box-shadow: inset 0 0 0 1px var(--primary);
+  background: var(--accent); color: var(--accent-foreground);
 }
+.chip.act:focus { outline: none; box-shadow: inset 0 0 0 1px var(--muted-foreground); }
+.chip.act.on:focus { box-shadow: inset 0 0 0 1px var(--primary); }
 .chip.floating:not(.act) { background: var(--pane); }
 .d { font-size: 8px; color: var(--faint-foreground); }
 .d.ok { color: var(--ok); }

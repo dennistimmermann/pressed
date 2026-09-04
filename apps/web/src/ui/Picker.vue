@@ -110,8 +110,10 @@ const focus = (el: unknown) => (el as HTMLInputElement | null)?.focus()
 }
 .row:hover:not(.off) { background: var(--row-hover); }
 .row.off { opacity: 0.45; }
-/* The one selection recipe. */
-.row.on { background: var(--accent); color: var(--accent-foreground); box-shadow: inset 0 0 0 1px var(--primary); }
+/* The active binding: accent wash, no ring. The ring follows focus — the last-clicked row. */
+.row.on { background: var(--accent); color: var(--accent-foreground); }
+.row:focus { outline: none; box-shadow: inset 0 0 0 1px var(--muted-foreground); }
+.row.on:focus { box-shadow: inset 0 0 0 1px var(--primary); }
 .row .l { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row .p {
   margin-left: auto; flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

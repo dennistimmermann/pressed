@@ -185,8 +185,8 @@ function commitRename(id: string, e: Event) {
             <span v-if="i && group.length" class="my-1.5 h-px flex-none bg-[var(--section-border)]" />
             <button
               v-for="f in group" :key="f.key" type="button"
-              class="flex flex-none items-center gap-2 rounded-[var(--radius-control)] px-2 py-1.5 text-left text-[12px] transition-colors duration-120 ease-out"
-              :class="filter === f.key ? 'bg-accent text-accent-foreground ring-1 ring-inset ring-primary' : 'hover:bg-muted'"
+              class="flex flex-none items-center gap-2 rounded-[var(--radius-control)] px-2 py-1.5 text-left text-[12px] transition-colors duration-120 ease-out outline-none focus:ring-1 focus:ring-inset"
+              :class="filter === f.key ? 'bg-accent text-accent-foreground focus:ring-primary' : 'hover:bg-muted focus:ring-[var(--muted-foreground)]'"
               @click="filter = f.key"
             >
               <span class="truncate" :class="{ 'font-mono text-[11px]': i }">{{ f.label }}</span>

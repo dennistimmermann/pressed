@@ -153,10 +153,16 @@ const editorProps = computed(() => ({
   color: var(--muted-foreground);
   transition: background-color 120ms ease-out, color 120ms ease-out, border-color 120ms ease-out;
 }
-.flip:hover,
-.flip.on {
+.flip:hover {
   border-color: var(--primary);
   background: var(--accent);
   color: var(--accent-foreground);
 }
+/* Active: accent wash, no blue edge. The ring follows focus — the last-clicked flip. */
+.flip.on {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+.flip:focus { outline: none; box-shadow: inset 0 0 0 1px var(--muted-foreground); border-color: var(--field-border); }
+.flip.on:focus { box-shadow: inset 0 0 0 1px var(--primary); }
 </style>

@@ -281,7 +281,9 @@ const sourceMeta = computed(() =>
   transition: background-color 120ms ease-out;
 }
 .srcrow:hover { background: var(--row-hover); }
-.srcrow.on { background: var(--accent); color: var(--accent-foreground); box-shadow: inset 0 0 0 1px var(--primary); }
+.srcrow.on { background: var(--accent); color: var(--accent-foreground); }
+.srcrow:focus { outline: none; box-shadow: inset 0 0 0 1px var(--muted-foreground); }
+.srcrow.on:focus { box-shadow: inset 0 0 0 1px var(--primary); }
 .srcrow .n { margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--meta-foreground); }
 .srcrow.on .n { color: var(--accent-foreground); }
 

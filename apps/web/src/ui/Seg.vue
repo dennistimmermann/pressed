@@ -42,8 +42,9 @@ const emit = defineEmits<{ pick: [value: string] }>()
 
 <style scoped>
 .seg {
-  /* A group never clips: a segment keeps its 24px and the group wraps instead (F19). */
-  display: flex; flex-wrap: wrap; min-height: var(--h-control); padding: 2px; gap: 2px; min-width: 0;
+  /* One row, always: a group never collapses to two rows (it reads as broken). The caller
+     gives a wide-enough row instead — a many-button group gets its own line (F19). */
+  display: flex; flex-wrap: nowrap; height: var(--h-control); padding: 2px; gap: 2px; min-width: 0;
   border: 1px solid var(--field-border); border-radius: var(--radius-control); background: var(--field);
 }
 .seg button {
@@ -54,8 +55,10 @@ const emit = defineEmits<{ pick: [value: string] }>()
 }
 .seg button:hover:not(:disabled) { color: var(--foreground); }
 .seg button:disabled { opacity: 0.4; }
-/* Chosen here: accent plus the 1px ring. In force from elsewhere: quiet, no ring. */
-.seg button.on { background: var(--accent); color: var(--accent-foreground); box-shadow: inset 0 0 0 1px var(--primary); }
+/* The active value: accent wash, no ring. The ring follows focus — the last-clicked segment. */
+.seg button.on { background: var(--accent); color: var(--accent-foreground); }
+.seg button:focus { outline: none; box-shadow: inset 0 0 0 1px var(--muted-foreground); }
+.seg button.on:focus { box-shadow: inset 0 0 0 1px var(--primary); }
 .seg button.muted { color: var(--inherited-foreground); background: var(--pane); }
 .seg svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 </style>

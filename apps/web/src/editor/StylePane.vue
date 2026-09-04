@@ -74,6 +74,16 @@ const I = {
   aCenter: '<path d="M2 8h12M5 4h2v8H5zM9 5h2v6H9z"/>',
   aEnd: '<path d="M2 14h12M5 5h2v6H5zM9 7h2v4H9z"/>',
   aStretch: '<path d="M2 2h12M2 14h12M5 4h2v8H5zM9 4h2v8H9z"/>',
+  // Column variants: the row glyphs transposed across y=x. In a column, justify runs down the
+  // main (vertical) axis and align runs across the cross (horizontal) axis, so the axes swap.
+  jStartV: '<path d="M2 2h12M5 5h2v7H5zM9 5h2v4H9z"/>',
+  jCenterV: '<path d="M2 8h12M5 4h2v8H5zM9 5h2v6H9z"/>',
+  jEndV: '<path d="M2 14h12M5 4h2v7H5zM9 7h2v4H9z"/>',
+  jBetweenV: '<path d="M2 2h12M2 14h12M6 4h4v3H6zM6 9h4v3H6z"/>',
+  aStartV: '<path d="M2 2v12M5 5h6v2H5zM5 9h4v2H5z"/>',
+  aCenterV: '<path d="M8 2v12M4 5h8v2H4zM5 9h6v2H5z"/>',
+  aEndV: '<path d="M14 2v12M5 5h6v2H5zM7 9h4v2H7z"/>',
+  aStretchV: '<path d="M2 2v12M14 2v12M4 5h8v2H4zM4 9h8v2H4z"/>',
   tLeft: '<path d="M2 4h12M2 8h8M2 12h10"/>',
   tCenter: '<path d="M2 4h12M4 8h8M3 12h10"/>',
   tRight: '<path d="M2 4h12M6 8h8M4 12h10"/>',
@@ -106,9 +116,23 @@ const CHOICES: Record<string, Segment[]> = {
   overflow: [{ value: 'visible', label: 'show' }, { value: 'hidden', label: 'clip' }],
 }
 
+// A column flex swaps the main and cross axes, so justify and align icons face the other way.
+const isColumn = computed(() => (eff('flex-direction') ?? 'row').startsWith('column'))
+const COL_ICON: Record<string, Record<string, string>> = {
+  'justify-content': { 'flex-start': I.jStartV, center: I.jCenterV, 'flex-end': I.jEndV, 'space-between': I.jBetweenV },
+  'align-items': { 'flex-start': I.aStartV, center: I.aCenterV, 'flex-end': I.aEndV, stretch: I.aStretchV },
+}
+
 /** `on` = written in this rule, `muted` = in effect but written elsewhere. */
-const seg = (prop: string) =>
-  CHOICES[prop].map((c) => ({ ...c, on: get(prop) === c.value, muted: !get(prop) && inh(prop) === c.value }))
+const seg = (prop: string) => {
+  const col = isColumn.value ? COL_ICON[prop] : undefined
+  return CHOICES[prop].map((c) => ({
+    ...c,
+    icon: col?.[c.value] ?? c.icon,
+    on: get(prop) === c.value,
+    muted: !get(prop) && inh(prop) === c.value,
+  }))
+}
 /** Clicking the segment that is already written removes the declaration; a muted one writes it. */
 const pick = (prop: string, value: string) => set(prop, get(prop) === value ? null : value)
 
@@ -387,7 +411,9 @@ const outside = computed(() => declarations.value.filter((d) => !GRID_PROPS.has(
     <!-- ── Layout ─────────────────────────────────────────────────────── -->
     <div class="gname"><span>Layout</span><span class="rule" /></div>
     <StyleSeg id="css-msg-display" label="display" :choices="seg('display')" :markers="msgs('display')" @pick="pick('display', $event)" />
-    <div v-if="isFlex" class="grid3">
+    <!-- Groups share a line while they fit and wrap as whole units when they don't — a group's
+         buttons never split across two rows (Seg is nowrap; each group keeps its natural width). -->
+    <div v-if="isFlex" class="flow">
       <StyleSeg id="css-msg-flex-direction" label="direction" :choices="seg('flex-direction')" :markers="msgs('flex-direction')" @pick="pick('flex-direction', $event)" />
       <StyleSeg id="css-msg-justify-content" label="justify" :choices="seg('justify-content')" :markers="msgs('justify-content')" @pick="pick('justify-content', $event)" />
       <StyleSeg id="css-msg-align-items" label="align" :choices="seg('align-items')" :markers="msgs('align-items')" @pick="pick('align-items', $event)" />
@@ -582,6 +608,10 @@ const outside = computed(() => declarations.value.filter((d) => !GRID_PROPS.has(
 }
 .gname .more:hover { color: var(--accent-link); }
 .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px 8px; align-items: end; }
+/* Groups flow side by side and wrap as whole units; each keeps its natural width so its Seg
+   (nowrap) never gets squeezed into two rows. Grow fills the line when they all fit. */
+.flow { display: flex; flex-wrap: wrap; gap: 7px 8px; align-items: end; }
+.flow > * { flex: 1 1 auto; min-width: max-content; }
 .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 8px; align-items: end; }
 .span2 { grid-column: span 2; }
 .sides {

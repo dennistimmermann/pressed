@@ -71,5 +71,6 @@ const locator = computed(() => {
     @rename-rule="ruleAtCaret && renameRule(ruleAtCaret, $event)"
     @delete-rule="ruleAtCaret && deleteRule(ruleAtCaret)"
     @select="(loc: Loc) => goToOffset(loc.start)"
+    @reveal="goToOffset"
   />
 </template>

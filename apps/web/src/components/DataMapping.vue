@@ -218,11 +218,14 @@ const ghostPath = computed(() => {
 .src.by-name { border-style: dashed; }
 /* A wired variable is --accent plus the 1px ring; an unwired one is a dashed outline (invariant 1). */
 .tgt { justify-content: center; border-style: dashed; color: var(--meta-foreground); }
-/* THE selection recipe: --accent wash + the 1px inset ring, nothing else (F14). */
+/* A wired variable is an active state: --accent wash, no ring (F14). */
 .tgt.on {
   border-style: solid; border-color: transparent; background: var(--accent);
-  color: var(--accent-foreground); box-shadow: inset 0 0 0 1px var(--primary);
+  color: var(--accent-foreground);
 }
+/* The ring follows focus — the last-clicked variable: blue if wired, dark grey if not. */
+.chip:focus { outline: none; box-shadow: inset 0 0 0 1px var(--muted-foreground); }
+.chip.wired:focus, .chip.on:focus { box-shadow: inset 0 0 0 1px var(--primary); }
 
 .wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .wires path { fill: none; stroke: var(--primary); stroke-width: 1.5; }
