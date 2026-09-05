@@ -3,6 +3,7 @@ import { labelDocument } from '@pressed/core/template/label.ts'
 import { debounce, RenderSuperseded } from '@/editor/runtime-client.ts'
 import { isWarning } from '@pressed/core'
 import { runtime } from '@/render/runtime-client'
+import { embedFonts } from '@/fonts/embed'
 import { data, mappedPreviewRow } from '../data'
 import { editor, meta } from './state'
 
@@ -37,14 +38,16 @@ export async function render() {
       rows: data.rows.length ? [toRaw(mappedPreviewRow.value)] : [],
       inspector: true,
     })
+    // The fonts the label names, embedded (spec §4.1) — after the frame, before the store.
+    const fonts = await embedFonts({ css: result.css, html: result.html })
     if (mine !== renderToken) return // an older render finishing late must not clobber a newer one
-    editor.messages = result.errors
+    editor.messages = [...result.errors, ...fonts.messages]
     editor.components = result.components
     // Last *good* render: a fatal message returns an empty html[0], which `!= null` let
     // through — the preview blanked instead of keeping the previous label (found during the
     // renderer experiments; engine-independent).
     const fatal = result.errors.some((e) => !isWarning(e))
-    if (!fatal && result.html[0] != null) editor.label = { html: result.html[0], css: result.css }
+    if (!fatal && result.html[0] != null) editor.label = { html: result.html[0], css: fonts.css }
   } catch (e) {
     if (mine !== renderToken || e instanceof RenderSuperseded) return
     editor.messages = [{ kind: 'render', message: e instanceof Error ? e.message : String(e), file: 'main' }]

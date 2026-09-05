@@ -40,7 +40,7 @@
 
 .middle { flex: 1; align-self: stretch; justify-content: center }
 .name {
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: Tinos, serif;
   font-size: 10.5pt;
   font-style: italic;
   text-align: center;

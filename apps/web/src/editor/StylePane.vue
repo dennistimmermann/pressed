@@ -23,6 +23,8 @@ import StyleField from './StyleField.vue'
 import StyleSeg, { type Segment } from './StyleSeg.vue'
 import { Labeled } from '@/ui'
 import { hasError, msgsBy } from './inspector/markers'
+import { FAMILIES, weightsOf } from '@/fonts/catalogue'
+import { DEFAULT_FONT } from '@pressed/core/template/label.ts'
 
 const props = defineProps<{
   rule: Rule | null
@@ -145,8 +147,23 @@ const styleSeg = computed<Segment[]>(() => [
   { value: 'i', label: 'I', title: 'italic', on: italic.value, muted: !get('font-style') && inh('font-style') === 'italic' },
   { value: 'u', label: 'U', title: 'underline', on: underline.value, muted: !get('text-decoration') && inh('text-decoration') === 'underline' },
 ])
+// Fonts by name (spec §4.1): the bundled families as CSS values, a foreign value kept on top so
+// the select still shows what the rule says. Weights follow the family in effect — Nunito has a
+// 900 and no 600, so "bold" is the family's lightest weight from 600 up.
+const cssName = (family: string) => (/\s/.test(family) ? `'${family}'` : family)
+const fontOptions = computed(() => {
+  const list = FAMILIES.map((f) => cssName(f.family))
+  const own = get('font-family')
+  return own && !list.includes(own) ? [own, ...list] : list
+})
+const family = computed(() => (eff('font-family') ?? DEFAULT_FONT).split(',')[0].trim().replace(/^['"]|['"]$/g, ''))
+const weightOptions = computed(() => {
+  const weights = weightsOf(family.value)
+  return (weights.length ? weights : [300, 400, 500, 600, 700]).map(String)
+})
+const boldWeight = computed(() => String(weightsOf(family.value).find((w) => w >= 600) ?? 700))
 function pickStyle(which: string) {
-  if (which === 'b') set('font-weight', bold.value ? null : '600')
+  if (which === 'b') set('font-weight', bold.value ? null : boldWeight.value)
   else if (which === 'i') set('font-style', italic.value ? null : 'italic')
   else set('text-decoration', underline.value ? null : 'underline')
 }
@@ -472,15 +489,14 @@ const outside = computed(() => declarations.value.filter((d) => !GRID_PROPS.has(
     <!-- ── Type ───────────────────────────────────────────────────────── -->
     <div class="gname"><span>Type</span><span class="rule" /></div>
     <StyleField
-      prop="font-family" label="font" kind="text" :value="get('font-family')"
-      :options="['sans-serif', 'serif', 'monospace', '\'IBM Plex Sans\', sans-serif', '\'IBM Plex Mono\', monospace']"
-      :markers="msgs('font-family')" @set="set('font-family', $event)"
+      prop="font-family" label="font" kind="select" :value="get('font-family')" :inherited="inh('font-family')"
+      :options="fontOptions" :markers="msgs('font-family')" @set="set('font-family', $event)"
     />
     <div class="grid3">
       <StyleField prop="font-size" label="size" :value="get('font-size')" :units="SIZE" unit="pt" :markers="msgs('font-size')" @set="set('font-size', $event)" />
       <StyleField
         prop="font-weight" label="weight" kind="select" :value="get('font-weight')" :inherited="inh('font-weight')"
-        :options="['300', '400', '500', '600', '700']" :markers="msgs('font-weight')" @set="set('font-weight', $event)"
+        :options="weightOptions" :markers="msgs('font-weight')" @set="set('font-weight', $event)"
       />
       <StyleField
         prop="line-height" label="line height" :value="get('line-height')" :units="['', 'em', '%']" unit=""

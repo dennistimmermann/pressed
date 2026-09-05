@@ -94,7 +94,7 @@ millimetres:
   <QrCode :value="`spool:${row.id}`" size="16mm" />
 </template>
 
-<style>.title { font: 700 13pt system-ui }</style>
+<style>.title { font: 700 13pt Nunito }</style>
 ```
 
 `row` is the current row, straight from your data source — available in the markup, and via
@@ -119,9 +119,10 @@ Two things that will otherwise cost you an evening:
 
 - **Switch the printer on before you plug it in.** Powered up after enumeration, it comes up
   half-dead with VID/PID `0`, and claiming the interface fails.
-- **Web fonts and external images do not survive the raster path.** Bundle a font or image as
-  a template asset, or use system fonts. Pressed says so in the Status pane rather than
-  printing a blank.
+- **External images and system fonts do not survive the raster path.** Pick a font from the
+  bundled set (21 families, from Plex to Pacifico — `font-family: Nunito` is all it takes) or
+  bundle your own as a template asset; images are assets too. Pressed says so in the Status
+  pane rather than printing a blank or a different face on every machine.
 
 ## Development
 

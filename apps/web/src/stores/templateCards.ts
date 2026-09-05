@@ -7,6 +7,7 @@ import { computed, ref, toRaw } from 'vue'
 import { parseMeta } from '@pressed/core/template/meta.ts'
 import { labelDocument } from '@pressed/core/template/label.ts'
 import { runtime } from '@/render/runtime-client'
+import { embedFonts } from '@/fonts/embed'
 import { bundled, isBundled, templateName, templates } from './templates'
 
 export const allTemplates = computed(() => [...templates.mine, ...bundled])
@@ -43,8 +44,9 @@ export async function ensureThumbnails() {
       // toRaw: a Vue proxy cannot be structured-cloned across postMessage — the throw landed
       // in the catch below and user-saved templates silently never got a thumbnail.
       const result = await runtime().render({ source: t.source, assets: toRaw(t.assets), rows: [] })
+      const { css } = await embedFonts({ css: result.css, html: result.html })
       if (result.html[0] != null)
-        thumbnails.value[t.id] = labelDocument({ html: result.html[0], css: result.css }, result.meta.size, false, result.meta.margin ?? 0)
+        thumbnails.value[t.id] = labelDocument({ html: result.html[0], css }, result.meta.size, false, result.meta.margin ?? 0)
     } catch { /* a template that will not compile simply has no thumbnail */ }
   }
 }

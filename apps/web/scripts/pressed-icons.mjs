@@ -130,7 +130,8 @@ writeFileSync(
   preview,
   `<style>body{background:#f6f5f3;color:#33302c;font:12px ui-monospace;margin:24px}.g{display:grid;grid-template-columns:repeat(4,1fr);gap:24px}.c{background:#fff;border:1px solid #e3e2df;padding:12px}.row{display:flex;align-items:flex-end;gap:16px}h2{font:600 12px system-ui;text-transform:uppercase;letter-spacing:.07em}</style>
 <h2>Drives</h2><div class="g">${drives.map(cell).join('')}</div>
-<h2>Heads</h2><div class="g">${heads.map(cell).join('')}</div>`,
+<h2>Heads</h2><div class="g">${heads.map(cell).join('')}</div>
+`,
 )
 console.log(`${drives.length + heads.length} icons → src/icons/pressed.ts · preview: ${preview}`)
 

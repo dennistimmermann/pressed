@@ -66,7 +66,7 @@ const NEW_TEMPLATE = `<meta>
 </template>
 
 <style>
-.label { font-family: system-ui, sans-serif; padding: 2.5mm; color: #000 }
+.label { padding: 2.5mm; color: #000 }
 .title { font-size: 12pt; font-weight: 700 }
 </style>
 `

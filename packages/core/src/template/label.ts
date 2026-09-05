@@ -12,7 +12,10 @@ import type { RenderedLabel } from '../types'
  * specificity, so any rule a template writes wins without `!important`. Only `div`: `span`
  * stays inline text, `li`/`table` keep their own display, `br` keeps breaking.
  */
-const BASE = 'html,body{margin:0;padding:0}:where(div){display:flex;flex-direction:column}'
+/** The font under every label that sets none (spec §4.1); the app embeds its faces on every render. */
+export const DEFAULT_FONT = 'IBM Plex Sans'
+
+const BASE = `html,body{margin:0;padding:0}:where(body){font-family:"${DEFAULT_FONT}"}:where(div){display:flex;flex-direction:column}`
 
 /**
  * Every document carries a CSP, because a template must never load from or phone home to the
